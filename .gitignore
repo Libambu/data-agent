@@ -1,0 +1,130 @@
+# =========================
+# OS / Editor
+# =========================
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+
+# VS Code
+.vscode/
+
+# Eclipse / STS
+.classpath
+.project
+.settings/
+.apt_generated/
+.springBeans
+.sts4-cache/
+
+# NetBeans
+nbproject/private/
+nbbuild/
+dist/
+nbdist/
+.nb-gradle/
+
+# =========================
+# Java / Spring Boot build
+# =========================
+target/
+build/
+.gradle/
+dependency-reduced-pom.xml
+
+# Maven wrapper（如果使用 ./mvnw 时会生成；jar 不应入库）
+.mvn/wrapper/maven-wrapper.jar
+
+# =========================
+# Runtime files
+# =========================
+*.log
+logs/
+log/
+*.pid
+*.seed
+*.pid.lock
+hs_err_pid*
+replay_pid*
+*.jfr
+
+# Spring Boot devtools restart
+.restart/
+
+# =========================
+# Frontend / Node.js (Vue + Vite)
+# =========================
+# 依赖目录
+node_modules/
+# 构建产物
+dist/
+dist-ssr/
+# 本地覆盖配置
+*.local
+# TypeScript 增量编译缓存
+*.tsbuildinfo
+# ESLint / 各类缓存
+.eslintcache
+.cache/
+.parcel-cache/
+.turbo/
+# Vite 启动时生成的临时文件
+*.timestamp-*-*.mjs
+# 包管理器调试日志
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+# 测试 / E2E 截图与录像
+coverage/
+__screenshots__/
+cypress/videos/
+cypress/screenshots/
+# 前端项目里自动生成的 API 客户端代码（按需保留/移除）
+data-agent-frontend/src/apis/
+
+# =========================
+# Local environment / secrets
+# =========================
+.env
+.env.*
+!.env.example
+
+# Do not commit local overrides
+application-local.yml
+application-local.yaml
+application-local.properties
+application-dev.yml
+application-dev.yaml
+application-dev.properties
+
+# =========================
+# Test / coverage outputs
+# =========================
+coverage/
+jacoco.exec
+*.hprof
+
+# =========================
+# Backup / merge leftovers / editor history
+# =========================
+*.bak
+*.orig
+*.rej
+.history/
+
+# =========================
+# Temporary files
+# =========================
+*.tmp
+*.temp
+*.swp
+*.swo
+*~

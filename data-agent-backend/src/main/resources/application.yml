@@ -1,0 +1,64 @@
+server:
+  # 后端服务端口；前端 vite proxy 的 target 是 http://localhost:9933，必须保持一致
+  port: 9933
+
+spring:
+  application:
+    # 当前 Spring Boot 应用的名字
+    name: data-agent-backend
+
+  # Redis 连接配置，Spring AI 的 Redis 向量数据库会用到这里的 Redis
+  data:
+    redis:
+      # Redis 服务地址；如果 Redis 跑在本机，就写 localhost
+      host: localhost
+      # Redis 默认端口是 6379
+      port: 6379
+      # 使用 Jedis 作为 Redis 客户端
+      client-type: jedis
+
+  ai:
+    # OpenAI 兼容接口配置；这里实际接的是阿里云 DashScope 的 OpenAI 兼容模式
+    openai:
+      # DashScope 的 API Key
+      api-key: "sk-c324740aa2b443f09158debfaa705f56"
+      # DashScope OpenAI 兼容模式的请求地址
+      base-url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
+      # 聊天模型配置
+      chat:
+        options:
+          # 默认聊天模型，给 ChatModel / ChatClient 使用
+          model: qwen3.6-plus
+
+      # 向量模型配置
+      embedding:
+        options:
+          # 文本转向量使用的模型
+          model: text-embedding-v4
+          # 向量维度；DashScope 的 text-embedding-v4 可以指定 2048 维
+          dimensions: 2048
+
+    # Spring AI 向量数据库配置
+    vectorstore:
+      # 使用 Redis 作为向量数据库
+      redis:
+        # 启动项目时自动创建 Redis 向量索引
+        initialize-schema: true
+        # Redis 里的向量索引名称，可以理解为“表名”
+        index-name: spring-ai-redis-index
+        # 存进 Redis 的每条文档 key 的前缀，例如 doc:xxx
+        prefix: "doc:"
+        # HNSW 是一种向量近似搜索算法，用来加快相似度搜索
+        hnsw:
+          # 每个向量节点最多连接多少个邻居；越大召回率可能越高，但占用内存更多
+          m: 16
+          # 创建索引时的搜索深度；越大索引质量越好，但建索引越慢
+          ef-construction: 200
+          # 查询时的搜索深度；越大结果可能越准，但查询越慢
+          ef-runtime: 10
+
+logging:
+  level:
+    # 打开你自己 advisor 包下面的 debug 日志，方便排查 Spring AI 调用过程
+    com.libambu.dataagent.advisor: debug
