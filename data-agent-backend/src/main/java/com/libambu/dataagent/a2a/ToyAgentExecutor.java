@@ -1,15 +1,24 @@
 package com.libambu.dataagent.a2a;
 
+import com.libambu.dataagent.tools.DataTimeTool;
 import io.a2a.server.agentexecution.AgentExecutor;
 import io.a2a.server.agentexecution.RequestContext;
 import io.a2a.server.events.EventQueue;
 import io.a2a.server.tasks.TaskUpdater;
 import io.a2a.spec.Part;
 import io.a2a.spec.TextPart;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
+import reactor.core.publisher.Flux;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * ============================================================
@@ -220,9 +229,32 @@ import java.util.Map;
  *     - 调用知识库 / RAG
  *     - 调用 Tool 工具链
  *   然后通过 TaskUpdater 把流式输出推回去即可。
+ *
+ * 【当前实现：方案二 —— 流式接入 DeepSeek】
+ *   1) 接收用户文本
+ *   2) 调用 deepseekClient.prompt().stream() 获取 token Flux
+ *   3) 每来一个 token 就调用 taskUpdater.addArtifact(..., append=true)
+ *      推送一帧 artifact-update 事件 → 客户端 SSE 实时收到
+ *   4) 流结束调用 lastChunk=true 收尾，并 taskUpdater.complete()
  */
+@Slf4j
 @Component
 public class ToyAgentExecutor implements AgentExecutor {
+
+    /** 注入和 ChatModelController 同一个 deepseekClient（支持 .stream()） */
+    private final ChatClient deepseekClient;
+
+    /** 时间工具：让 LLM 能在需要时调用 "获取当前日期/时间" */
+    private final DataTimeTool dataTimeTool;
+
+    public ToyAgentExecutor(@Qualifier("deepseekClient") ChatClient deepseekClient,
+                            DataTimeTool dataTimeTool) {
+        this.deepseekClient = deepseekClient;
+        this.dataTimeTool = dataTimeTool;
+    }
+
+    /** 单次流式响应的最长等待时间，避免线程被永久阻塞 */
+    private static final long STREAM_TIMEOUT_SECONDS = 120L;
 
     /**
      * 处理一次 A2A 调用。
@@ -237,40 +269,111 @@ public class ToyAgentExecutor implements AgentExecutor {
         TaskUpdater taskUpdater = new TaskUpdater(context, eventQueue);
 
         // 1. 从用户消息的多个 Part 中找到第一个文本类型的 Part。
-        //    A2A 消息可以包含多种 Part：TextPart、FilePart、DataPart 等，
-        //    这里只演示文本场景。
         TextPart textPart = (TextPart) context.getMessage().getParts().stream()
                 .filter(p -> p instanceof TextPart)
                 .findFirst()
                 .orElseThrow();
-        String text = textPart.getText();
+        String userInput = textPart.getText();
 
-        // 2. 构造一条"产物（Artifact）"推回给客户端。
-        //    Artifact 表示 Agent 输出的成果物，可以是文本、文件、结构化数据等。
-        //    参数说明：
-        //      - parts        ：本次产物包含哪些 Part（这里只有一个 TextPart）
-        //      - "1"          ：artifactId，自定义业务 id
-        //      - "TOY_HELLO_NODE"：name，描述这个产物来自哪个节点（便于前端展示）
-        //      - metadata     ：附加元数据，前端可据此分辨流式片段、节点类型等
-        taskUpdater.addArtifact(
-                List.<Part<?>>of(new TextPart("hello from a2a: " + text)),
-                "1",
-                "TOY_HELLO_NODE",
-                Map.of("outputType", "GRAPH_NODE_STREAMING")
+        // 1.1 取出 A2A 的 contextId，作为 ChatMemory 的会话隔离 key。
+        //     同一个 contextId 的多次请求 = 同一段对话历史；不同 contextId 互相不可见。
+        //     这样客户端只要在后续 Message 里带相同的 contextId，Agent 就能记住上下文。
+        String conversationId = context.getContextId();
+
+        // 2. 通知客户端：任务已开始处理（推一帧 status-update(state=working)）
+        taskUpdater.startWork();
+
+        // 3. 调用 DeepSeek 流式接口，拿到 token Flux
+        //    - .tools(dataTimeTool)：让 LLM 在需要时自动调用时间工具（function calling）
+        //    - .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, conversationId))：
+        //      给 MessageChatMemoryAdvisor 动态传入会话 id，实现"同 contextId 共享记忆"
+        Flux<String> tokenFlux = deepseekClient.prompt()
+                .user(userInput)
+                .tools(dataTimeTool)
+                .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, conversationId))
+                .stream()
+                .content();
+
+        // 4. 用一个固定 artifactId，所有片段共用同一个 artifact，
+        //    通过 append=true 表示"追加到同一个 artifact"。
+        final String artifactId = "deepseek-stream";
+        final String artifactName = "DEEPSEEK_STREAM";
+        final AtomicInteger chunkIndex = new AtomicInteger(0);
+        // 用 CountDownLatch 把异步 Flux 的完成事件"同步化"，
+        // 因为 AgentExecutor.execute 必须在所有事件推送完后再返回。
+        final CountDownLatch done = new CountDownLatch(1);
+        final Throwable[] errorHolder = new Throwable[1];
+
+        tokenFlux.subscribe(
+                // onNext：每收到一个 token 片段，就推一帧 artifact-update（append=true）
+                token -> {
+                    if (token == null || token.isEmpty()) {
+                        return;
+                    }
+                    int idx = chunkIndex.getAndIncrement();
+                    boolean isFirst = (idx == 0);
+                    taskUpdater.addArtifact(
+                            List.<Part<?>>of(new TextPart(token)),
+                            artifactId,
+                            artifactName,
+                            Map.of(
+                                    "outputType", "GRAPH_NODE_STREAMING",
+                                    "chunkIndex", idx
+                            ),
+                            // append：第一片为 false（创建 artifact），后续为 true（追加）
+                            !isFirst,
+                            // lastChunk：流过程中都是 false，结束时单独推一帧
+                            false
+                    );
+                },
+                // onError：流出现异常 → 标记失败
+                err -> {
+                    log.error("DeepSeek stream error", err);
+                    errorHolder[0] = err;
+                    done.countDown();
+                },
+                // onComplete：推一帧 lastChunk=true 收尾，再标记任务完成
+                () -> {
+                    taskUpdater.addArtifact(
+                            List.<Part<?>>of(new TextPart("")),
+                            artifactId,
+                            artifactName,
+                            Map.of("outputType", "GRAPH_NODE_STREAMING", "final", true),
+                            true,   // append
+                            true    // lastChunk
+                    );
+                    done.countDown();
+                }
         );
 
-        // 3. 通知 SDK：本次任务已经全部完成，可以把 Task 状态置为 COMPLETED
-        //    并向客户端发送 final 事件。
-        taskUpdater.complete();
+        // 5. 等待流式输出完成（或超时），保证 execute 返回前所有事件都已入队
+        try {
+            boolean finished = done.await(STREAM_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            if (!finished) {
+                log.warn("DeepSeek stream timeout after {}s", STREAM_TIMEOUT_SECONDS);
+                taskUpdater.fail();
+                return;
+            }
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            taskUpdater.fail();
+            return;
+        }
+
+        // 6. 根据是否有异常，发送终态事件
+        if (errorHolder[0] != null) {
+            taskUpdater.fail();
+        } else {
+            taskUpdater.complete();
+        }
     }
 
     /**
      * 处理客户端发起的取消请求。
-     * 本演示版不支持取消任务（execute 是同步快速完成的），所以留空。
-     * 真实场景需要：标记内部任务为已取消，停止流式输出，调用 taskUpdater.cancel()。
+     * 当前流式版本暂未实现"中途打断 LLM"，留空作为后续扩展点。
      */
     @Override
     public void cancel(RequestContext context, EventQueue eventQueue) {
-        // 暂不支持取消
+        // TODO: 持有 Disposable 后可在此 dispose() 取消正在进行的 Flux
     }
 }
