@@ -44,7 +44,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *     { "input": "用户输入文本" }
  *
  *   然后 ToyHelloNode 从 OverAllState 里读取 input，调用 ChatClient.stream()，
- *   大模型开始流式返回 ChatResponse，Graph 再把这些流式结果包装成 NodeOutput。
+ *   大模型开始流式返回 String 文本片段，Graph 再把这些流式结果包装成 NodeOutput。
  *
  * 【A2A 协议里的几个关键对象】
  *
@@ -260,7 +260,7 @@ public class ToyAgentExecutor implements AgentExecutor {
          * 第一层判断：当前 NodeOutput 是否是 StreamingOutput。
          *
          * StreamingOutput 表示“这个节点有流式输出”。
-         * 在当前 Demo 中，ToyHelloNode 使用 ChatClient.stream().chatResponse()，
+         * 在当前 Demo 中，ToyHelloNode 使用 ChatClient.stream().content()，
          * 所以大模型返回内容时会产生 StreamingOutput。
          *
          * Java 这里使用的是 instanceof 模式匹配写法：
