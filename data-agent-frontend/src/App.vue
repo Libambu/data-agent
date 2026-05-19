@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Client, ClientFactory } from '@a2a-js/sdk/client'
 import { type AgentCard } from '@a2a-js/sdk'
-import { computed, markRaw, onMounted, reactive, ref, shallowRef } from 'vue'
+import { computed, markRaw, nextTick, onMounted, reactive, ref, shallowRef } from 'vue'
 import { TOY_GRAPH_NODE } from '@/constants/toy-graph-spec'
 import RouteNodeCard from '@/components/route-node-card.vue'
 import StudyPlanNodeCard from '@/components/study-plan-node-card.vue'
@@ -73,6 +73,11 @@ const resetSteps = () => {
   steps.splice(0, steps.length)
 }
 
+const waitForPaint = async () => {
+  await nextTick()
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+}
+
 const handleSend = async () => {
   const input = userInput.value?.trim() ?? ''
   if (!client.value || !input || isRunning.value) return
@@ -99,6 +104,7 @@ const handleSend = async () => {
           const status: ToyStep['status'] =
             artifact.metadata?.outputType == 'GRAPH_NODE_FINISHED' ? 'success' : 'pending'
           upsertStep(artifactName, text, status, data)
+          await waitForPaint()
         }
       }
       if (event.kind === 'status-update' && event.status.state === 'completed') {
