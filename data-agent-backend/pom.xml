@@ -92,6 +92,13 @@
             <scope>runtime</scope>
         </dependency>
         
+        <!-- Spring AI Alibaba Graph，用于编排 Agent 节点（最小 Graph 链路） -->
+        <dependency>
+            <groupId>com.alibaba.cloud.ai</groupId>
+            <artifactId>spring-ai-alibaba-graph-core</artifactId>
+            <version>1.1.2.3</version>
+        </dependency>
+        
     </dependencies>
     <dependencyManagement>
         <dependencies>

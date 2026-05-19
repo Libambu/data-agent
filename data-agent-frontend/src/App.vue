@@ -1,30 +1,29 @@
 <script setup lang="ts">
 import { Client, ClientFactory } from '@a2a-js/sdk/client'
-import { type AgentCard } from '@a2a-js/sdk'
-import { onMounted, reactive, ref, shallowRef } from 'vue'
+import { onMounted, reactive, ref, shallowRef, nextTick } from 'vue'
 import ToyHelloNode from '@/components/toy-hello-node.vue'
-import { request } from '@/utils/request'
+import { getAgentCard } from '@/utils/api-instance.ts'
 
-// 单个步骤的展示数据结构
 interface ToyStep {
   id: string
   name: string
   content: string
   status: 'pending' | 'success'
 }
-
-// A2A SDK 提供的工厂，用 AgentCard 构造一个 Client
 const factory = new ClientFactory()
-// shallowRef：client 内部对象很复杂，没必要深响应
 const client = shallowRef<Client | undefined>()
-// 当前正在展示的步骤
 const currentStep = reactive<ToyStep>({ content: '', id: '', name: '', status: 'pending' })
-// 输入框双向绑定
 const userInput = ref('')
-
-// 用户回车后触发：调用 SDK 走流式发消息
+const waitForPaint = async () => {
+  await nextTick()
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+}
 const handleSend = async () => {
   if (!client.value) return
+  currentStep.id = crypto.randomUUID()
+  currentStep.name = ''
+  currentStep.content = ''
+  currentStep.status = 'pending'
   const stream = client.value.sendMessageStream({
     message: {
       messageId: crypto.randomUUID(),
@@ -33,7 +32,6 @@ const handleSend = async () => {
       parts: [{ kind: 'text', text: userInput.value }],
     },
   })
-  // 后端用 SSE 推送，每条事件就是一次循环
   for await (const event of stream) {
     console.log(event)
     if (event.kind === 'artifact-update') {
@@ -44,6 +42,7 @@ const handleSend = async () => {
         currentStep.name = artifact.name
         currentStep.content += textPart.text
         currentStep.status = 'pending'
+        await waitForPaint()
       }
     }
     if (event.kind === 'status-update' && event.status.state === 'completed') {
@@ -51,16 +50,8 @@ const handleSend = async () => {
     }
   }
 }
-
 onMounted(async () => {
-  // 1) 拉 AgentCard
-  //    实际请求路径：GET /api/.well-known/agent-card.json
-  //    经过 vite proxy 转发到：http://localhost:9933/.well-known/agent-card.json
-  const agentCard = (await request.get<unknown, AgentCard>(
-    '/.well-known/agent-card.json',
-  )) as AgentCard
-  // 2) 用 AgentCard 构造 A2A Client（SDK 内部会读 card.url 拿到 /a2a/jsonrpc 这个端点）
-  client.value = await factory.createFromAgentCard(agentCard)
+  client.value = await factory.createFromAgentCard(await getAgentCard())
 })
 </script>
 

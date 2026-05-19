@@ -1,379 +1,372 @@
 package com.libambu.dataagent.a2a;
 
-import com.libambu.dataagent.tools.DataTimeTool;
+import com.alibaba.cloud.ai.graph.NodeOutput;
+import com.alibaba.cloud.ai.graph.StateGraph;
+import com.alibaba.cloud.ai.graph.streaming.OutputType;
+import com.alibaba.cloud.ai.graph.streaming.StreamingOutput;
 import io.a2a.server.agentexecution.AgentExecutor;
 import io.a2a.server.agentexecution.RequestContext;
 import io.a2a.server.events.EventQueue;
 import io.a2a.server.tasks.TaskUpdater;
+import io.a2a.spec.DataPart;
 import io.a2a.spec.Part;
 import io.a2a.spec.TextPart;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.memory.ChatMemory;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
-import reactor.core.publisher.Flux;
 
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * ============================================================
- * 演示版 Agent 业务执行器（核心业务入口）
+ * ToyAgentExecutor：A2A 请求进入后真正执行 Agent 业务的地方
  * ============================================================
  *
- * 【文件职责】
- *   实现 a2a-sdk 的 AgentExecutor 接口，定义"当一个 A2A 请求到来时，
- *   Agent 实际要做什么事"。这是整个 A2A 服务的"业务大脑"。
+ * 【一句话理解】
+ *   这个类负责把「A2A 协议请求」转换成「Spring AI Alibaba Graph 执行」，
+ *   再把 Graph 执行过程中产生的 NodeOutput 翻译成 A2A 协议能识别的 Artifact。
  *
- * 【在调用链中的位置】
- *   HTTP 请求 → A2AController → JSONRPCHandler → DefaultRequestHandler
- *               → AgentExecutor（就是本类） → 通过 EventQueue 推送结果
+ * 【它在整个调用链中的位置】
+ *   HTTP 请求
+ *     → A2A JSON-RPC 入口
+ *     → A2A SDK 的请求处理器
+ *     → AgentExecutor.execute(...)，也就是本类
+ *     → StateGraph.compile().stream(...)
+ *     → Graph 节点执行，例如 TOY_HELLO_NODE
+ *     → handleNodeOutput(...) 把 Graph 输出翻译成 A2A Artifact
+ *     → TaskUpdater 通过 EventQueue 把结果推给客户端
  *
- * 【两个核心方法】
- *   1) execute(ctx, queue) ：处理一个新请求
- *   2) cancel(ctx, queue)  ：处理任务取消（本演示版未实现）
+ * 【当前这份 Demo 的 Graph 链路】
+ *   START → TOY_HELLO_NODE → END
  *
- * ============================================================
- *  ★★★ A2A 协议请求 / 响应结构速查 ★★★
- * ============================================================
+ *   用户输入会先被放进 Graph 初始状态：
+ *     { "input": "用户输入文本" }
  *
- * 【一、外层：JSON-RPC 2.0 信封】
- * ─────────────────────────────────────────────────────────────
- * 不管是什么 A2A 操作，外层永远是标准 JSON-RPC 2.0 格式：
+ *   然后 ToyHelloNode 从 OverAllState 里读取 input，调用 ChatClient.stream()，
+ *   大模型开始流式返回 ChatResponse，Graph 再把这些流式结果包装成 NodeOutput。
  *
- *   请求体：
- *   {
- *     "jsonrpc": "2.0",
- *     "id":      "req-001",         // 客户端生成的请求 id
- *     "method":  "message/send",    // 决定请求类型，见下文枚举
- *     "params":  { ... }            // 内层业务参数，结构随 method 变化
- *   }
+ * 【A2A 协议里的几个关键对象】
  *
- *   成功响应：
- *   {
- *     "jsonrpc": "2.0",
- *     "id":      "req-001",
- *     "result":  { ... }            // 业务结果对象
- *   }
+ *   1. Message：一条消息，客户端输入和 Agent 输出都可以是 Message。
+ *      Message 里真正承载内容的是 parts 数组。
  *
- *   错误响应：
- *   {
- *     "jsonrpc": "2.0",
- *     "id":      "req-001",
- *     "error":   { "code": -32601, "message": "Method not found" }
- *   }
- *
- *
- * 【二、method 枚举（决定 params/result 的形态）】
- * ─────────────────────────────────────────────────────────────
- *   非流式（HTTP 一次返回 application/json）：
- *     - message/send                              发送消息，同步等结果
- *     - tasks/get                                 查询任务状态
- *     - tasks/cancel                              取消任务
- *     - tasks/pushNotificationConfig/{set|get|list|delete}
- *     - agent/authenticatedExtendedCard           获取扩展 AgentCard
- *
- *   流式（HTTP 返回 text/event-stream 通过 SSE 推送）：
- *     - message/stream                            发送消息，流式接收事件
- *     - tasks/resubscribe                         重新订阅已存在任务的事件流
- *
- *
- * 【三、核心业务对象（params / result 内部用到）】
- * ─────────────────────────────────────────────────────────────
- *
- * ① Message（一条消息，输入输出都用它）
- *   {
- *     "kind":       "message",          // 区分对象类型的判别字段
- *     "messageId":  "msg-uuid",         // 消息唯一 id
- *     "role":       "user" | "agent",   // 谁发的
- *     "parts":      [ Part, ... ],      // 消息内容（多模态片段数组）
- *     "contextId":  "ctx-uuid",         // 会话 id（多轮对话用）
- *     "taskId":     "task-uuid",        // 关联的任务 id（可选）
- *     "metadata":         { ... },      // 自由扩展元数据
- *     "referenceTaskIds": [ "..." ],    // 引用的其它 taskId（如续写）
- *     "extensions":       [ "..." ]     // 启用的协议扩展 URI
- *   }
- *
- * ② Part（消息/产物的一个片段，多态）
- *   - TextPart：{ "kind":"text", "text":"...", "metadata":{...} }
- *   - FilePart：{ "kind":"file", "file":{ "name":"x.png", "mimeType":"...",
- *                                        "bytes":"<base64>" 或 "uri":"..." } }
- *   - DataPart：{ "kind":"data", "data":{ ...任意 JSON... } }
- *
- * ③ Task（一次 Agent 调用的"工单"，服务端维护）
- *   {
- *     "kind":      "task",
- *     "id":        "task-uuid",
- *     "contextId": "ctx-uuid",
- *     "status":    TaskStatus,          // 见 ④
- *     "artifacts": [ Artifact, ... ],   // Agent 的产出物
- *     "history":   [ Message, ... ],    // 来回消息历史
- *     "metadata":  { ... }
- *   }
- *
- * ④ TaskStatus & TaskState（任务状态）
- *   TaskStatus = { "state": TaskState, "message": Message?, "timestamp":"..." }
- *   TaskState 枚举（粗体为终态 isFinal=true）：
- *     SUBMITTED       已提交，未开始
- *     WORKING         处理中
- *     INPUT_REQUIRED  需要用户补充输入（多轮对话）
- *     AUTH_REQUIRED   需要鉴权
- *    *COMPLETED*      成功完成
- *    *CANCELED*       已取消
- *    *FAILED*         失败
- *    *REJECTED*       被拒绝
- *     UNKNOWN         未知
- *
- * ⑤ Artifact（Agent 的产出物）
- *   {
- *     "artifactId":  "1",
- *     "name":        "TOY_HELLO_NODE",  // 产物名/来源节点
- *     "description": "...",
- *     "parts":       [ Part, ... ],     // 产物内容
- *     "metadata":    { "outputType": "GRAPH_NODE_STREAMING", ... },
- *     "extensions":  [ "..." ]
- *   }
- *
- *
- * 【四、举例：message/send 的完整请求/响应】
- * ─────────────────────────────────────────────────────────────
- *
- *  ▶ 客户端 → 服务端（POST /a2a/jsonrpc）：
- *  {
- *    "jsonrpc": "2.0",
- *    "id": "req-001",
- *    "method": "message/send",
- *    "params": {
- *      "message": {
+ *      示例：
+ *      {
  *        "kind": "message",
- *        "messageId": "msg-001",
  *        "role": "user",
- *        "parts": [ { "kind":"text", "text":"hi" } ]
- *      },
- *      "configuration": {              // 可选
- *        "acceptedOutputModes": ["text/plain"],
- *        "blocking": true,             // true=同步等完成；false=立即返回 working
- *        "historyLength": 10
+ *        "parts": [
+ *          { "kind": "text", "text": "你好" }
+ *        ]
  *      }
- *    }
- *  }
  *
- *  ◀ 服务端 → 客户端（result 是一个 Task 对象）：
- *  {
- *    "jsonrpc": "2.0",
- *    "id": "req-001",
- *    "result": {
- *      "kind": "task",
- *      "id": "task-uuid",
- *      "contextId": "ctx-uuid",
- *      "status": { "state": "completed", "timestamp": "..." },
- *      "artifacts": [
- *        {
- *          "artifactId": "1",
- *          "name": "TOY_HELLO_NODE",
- *          "parts": [ { "kind":"text", "text":"hello from a2a: hi" } ],
- *          "metadata": { "outputType": "GRAPH_NODE_STREAMING" }
+ *   2. Part：消息或产物里的一个内容片段，常见类型有：
+ *      - TextPart：文本片段，适合放自然语言内容，例如大模型回复。
+ *      - DataPart：结构化数据片段，适合放 JSON、Map、Graph state、工具结果。
+ *      - FilePart：文件片段，适合放图片、文档等文件内容。
+ *
+ *      可以简单记成：
+ *        TextPart = 给人直接看的文本。
+ *        DataPart = 给程序解析或调试查看的结构化数据。
+ *
+ *   3. Task：一次 Agent 调用任务。
+ *      message/send 最终通常会返回一个完整 Task，Task 里面包含 status、history、artifacts。
+ *
+ *   4. Artifact：Agent 在任务执行过程中产生的一个“产物容器”。
+ *      Artifact 不是最终内容本身，它里面的 parts 才是真正内容。
+ *
+ *      结构大致是：
+ *      {
+ *        "artifactId": "1",
+ *        "name": "TOY_HELLO_NODE",
+ *        "parts": [
+ *          { "kind": "text", "text": "你好" }
+ *        ],
+ *        "metadata": {
+ *          "outputType": "GRAPH_NODE_STREAMING"
  *        }
- *      ],
- *      "history": [ ...原始 message... ]
- *    }
- *  }
+ *      }
  *
+ * 【为什么本类既用 TextPart 又用 DataPart】
  *
- * 【五、举例：message/stream 的 SSE 事件流】
- * ─────────────────────────────────────────────────────────────
- *  请求体同 message/send（method 改为 "message/stream"）。
- *  响应 Content-Type: text/event-stream，按顺序推送多帧事件，
- *  每一帧 data: 都是一条完整的 JSON-RPC 响应：
+ *   - 当 Graph 正在流式输出大模型文本时：
+ *       使用 TextPart。
+ *       因为这是用户要直接阅读的回答片段，例如“你好”“，我是”“AI 助手”。
  *
- *    data: {"jsonrpc":"2.0","id":"req-001","result":{ Task 初始 SUBMITTED }}
+ *   - 当 Graph 节点执行完成，或者普通非流式节点产生输出时：
+ *       使用 DataPart。
+ *       因为这时更适合返回完整的 Graph state，例如：
+ *       {
+ *         "input": "用户问题",
+ *         "output": "节点输出"
+ *       }
  *
- *    data: {"jsonrpc":"2.0","id":"req-001","result":{
- *             "kind":"status-update",
- *             "taskId":"...","status":{"state":"working"}, "final":false }}
+ * 【message/send 和 message/stream 的区别】
  *
- *    data: {"jsonrpc":"2.0","id":"req-001","result":{
- *             "kind":"artifact-update",
- *             "taskId":"...", "artifact":{ ...Artifact... },
- *             "append":false, "lastChunk":true }}
+ *   - message/send：
+ *       非流式调用，HTTP 最后返回一个完整 Task。
+ *       Artifact 会出现在 Task.artifacts 里。
  *
- *    data: {"jsonrpc":"2.0","id":"req-001","result":{
- *             "kind":"status-update",
- *             "taskId":"...","status":{"state":"completed"}, "final":true }}
+ *   - message/stream：
+ *       流式调用，HTTP 通过 SSE 一帧一帧推送事件。
+ *       每次 taskUpdater.addArtifact(...) 都会变成一帧 artifact-update 事件。
  *
- *  四种 result.kind：task | status-update | artifact-update | message
- *  当 final=true 时，SSE 流结束（emitter.complete()）。
+ * 【本类最重要的两个方法】
  *
+ *   1. execute(...)
+ *      负责接收 A2A 请求、取出用户输入、启动 Graph。
  *
- * 【六、本类代码与协议的对应关系】
- * ─────────────────────────────────────────────────────────────
- *  context.getMessage()              ↔ params.message （客户端发来的 Message）
- *  context.getTaskId()/getContextId()↔ 当前 Task 的 id / contextId
- *  taskUpdater.addArtifact(...)      ↔ 推送一帧 artifact-update 事件
- *  taskUpdater.startWork()           ↔ 推 status-update(state=working)
- *  taskUpdater.complete()            ↔ 推 status-update(state=completed,final=true)
- *  taskUpdater.fail() / cancel()     ↔ 推 status-update(state=failed/canceled,final=true)
- *
- *
- * 【演示逻辑】
- *   从用户消息中取出第一个 TextPart，把里面的文本拼接成
- *   "hello from a2a: xxx"，作为输出 Artifact 返回。
- *
- * 【生产环境替换思路】
- *   把 execute() 里的逻辑替换为：
- *     - 调用 LLM（Spring AI 的 ChatClient）
- *     - 调用知识库 / RAG
- *     - 调用 Tool 工具链
- *   然后通过 TaskUpdater 把流式输出推回去即可。
- *
- * 【当前实现：方案二 —— 流式接入 DeepSeek】
- *   1) 接收用户文本
- *   2) 调用 deepseekClient.prompt().stream() 获取 token Flux
- *   3) 每来一个 token 就调用 taskUpdater.addArtifact(..., append=true)
- *      推送一帧 artifact-update 事件 → 客户端 SSE 实时收到
- *   4) 流结束调用 lastChunk=true 收尾，并 taskUpdater.complete()
+ *   2. handleNodeOutput(...)
+ *      负责把 Graph 的 NodeOutput 翻译成 A2A 的 Artifact。
+ *      这是理解 Graph 输出如何返回给 A2A 客户端的关键方法。
  */
 @Slf4j
 @Component
 public class ToyAgentExecutor implements AgentExecutor {
 
-    /** 注入和 ChatModelController 同一个 deepseekClient（支持 .stream()） */
-    private final ChatClient deepseekClient;
+    private final StateGraph stateGraph;
 
-    /** 时间工具：让 LLM 能在需要时调用 "获取当前日期/时间" */
-    private final DataTimeTool dataTimeTool;
-
-    public ToyAgentExecutor(@Qualifier("deepseekClient") ChatClient deepseekClient,
-                            DataTimeTool dataTimeTool) {
-        this.deepseekClient = deepseekClient;
-        this.dataTimeTool = dataTimeTool;
+    public ToyAgentExecutor(StateGraph stateGraph) {
+        this.stateGraph = stateGraph;
     }
 
-    /** 单次流式响应的最长等待时间，避免线程被永久阻塞 */
-    private static final long STREAM_TIMEOUT_SECONDS = 120L;
-
-    /**
-     * 处理一次 A2A 调用。
-     *
-     * @param context    请求上下文，可以从中拿到原始 message、taskId、headers 等
-     * @param eventQueue 事件队列，所有的输出（中间结果、最终结果）都通过它推回客户端
-     */
     @Override
     public void execute(RequestContext context, EventQueue eventQueue) {
-        // TaskUpdater 是 SDK 提供的"任务进度更新工具"，封装了把事件
-        // （如 artifact、状态变化、完成信号）正确地写入 EventQueue 的逻辑。
+        /*
+         * TaskUpdater 是 A2A SDK 提供的任务更新器。
+         *
+         * 你可以把它理解成“服务端往客户端推送任务进度和产物的工具”：
+         *   - addArtifact(...)：推送一帧产物 artifact-update
+         *   - complete()：推送任务完成 status-update
+         *   - fail()：推送任务失败 status-update
+         *
+         * EventQueue 是底层事件队列，TaskUpdater 会把事件写到这个队列里，
+         * 最终由 A2A SDK 根据 message/send 或 message/stream 的模式返回给客户端。
+         */
         TaskUpdater taskUpdater = new TaskUpdater(context, eventQueue);
 
-        // 1. 从用户消息的多个 Part 中找到第一个文本类型的 Part。
+        /*
+         * artifactNum 用来生成 Artifact 的 artifactId。
+         *
+         * 每调用一次 artifactNum.incrementAndGet()，都会得到一个新的编号：
+         *   1、2、3、4 ...
+         *
+         * 这里使用 AtomicInteger 的主要原因有两个：
+         *   1. 它可以在 lambda 表达式中被安全地递增使用。
+         *   2. 即使后续执行链路变成异步/多线程，也比普通 int 更稳妥。
+         */
+        AtomicInteger artifactNum = new AtomicInteger();
+
+        /*
+         * A2A 的 Message 由多个 Part 组成，Part 可以是 TextPart、DataPart、FilePart 等。
+         *
+         * 当前这个 Toy Agent 只支持文本输入，所以这里从用户消息的 parts 中找到
+         * 第一个 TextPart，把它作为用户输入。
+         *
+         * 客户端请求里的 message 大概长这样：
+         * {
+         *   "kind": "message",
+         *   "role": "user",
+         *   "parts": [
+         *     { "kind": "text", "text": "你好" }
+         *   ]
+         * }
+         */
         TextPart textPart = (TextPart) context.getMessage().getParts().stream()
                 .filter(p -> p instanceof TextPart)
                 .findFirst()
                 .orElseThrow();
-        String userInput = textPart.getText();
 
-        // 1.1 取出 A2A 的 contextId，作为 ChatMemory 的会话隔离 key。
-        //     同一个 contextId 的多次请求 = 同一段对话历史；不同 contextId 互相不可见。
-        //     这样客户端只要在后续 Message 里带相同的 contextId，Agent 就能记住上下文。
-        String conversationId = context.getContextId();
+        // 真正传给 Graph 的用户文本，例如 “你好”。
+        String text = textPart.getText();
 
-        // 2. 通知客户端：任务已开始处理（推一帧 status-update(state=working)）
-        taskUpdater.startWork();
-
-        // 3. 调用 DeepSeek 流式接口，拿到 token Flux
-        //    - .tools(dataTimeTool)：让 LLM 在需要时自动调用时间工具（function calling）
-        //    - .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, conversationId))：
-        //      给 MessageChatMemoryAdvisor 动态传入会话 id，实现"同 contextId 共享记忆"
-        Flux<String> tokenFlux = deepseekClient.prompt()
-                .user(userInput)
-                .tools(dataTimeTool)
-                .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, conversationId))
-                .stream()
-                .content();
-
-        // 4. 用一个固定 artifactId，所有片段共用同一个 artifact，
-        //    通过 append=true 表示"追加到同一个 artifact"。
-        final String artifactId = "deepseek-stream";
-        final String artifactName = "DEEPSEEK_STREAM";
-        final AtomicInteger chunkIndex = new AtomicInteger(0);
-        // 用 CountDownLatch 把异步 Flux 的完成事件"同步化"，
-        // 因为 AgentExecutor.execute 必须在所有事件推送完后再返回。
-        final CountDownLatch done = new CountDownLatch(1);
-        final Throwable[] errorHolder = new Throwable[1];
-
-        tokenFlux.subscribe(
-                // onNext：每收到一个 token 片段，就推一帧 artifact-update（append=true）
-                token -> {
-                    if (token == null || token.isEmpty()) {
-                        return;
-                    }
-                    int idx = chunkIndex.getAndIncrement();
-                    boolean isFirst = (idx == 0);
-                    taskUpdater.addArtifact(
-                            List.<Part<?>>of(new TextPart(token)),
-                            artifactId,
-                            artifactName,
-                            Map.of(
-                                    "outputType", "GRAPH_NODE_STREAMING",
-                                    "chunkIndex", idx
-                            ),
-                            // append：第一片为 false（创建 artifact），后续为 true（追加）
-                            !isFirst,
-                            // lastChunk：流过程中都是 false，结束时单独推一帧
-                            false
-                    );
-                },
-                // onError：流出现异常 → 标记失败
-                err -> {
-                    log.error("DeepSeek stream error", err);
-                    errorHolder[0] = err;
-                    done.countDown();
-                },
-                // onComplete：推一帧 lastChunk=true 收尾，再标记任务完成
-                () -> {
-                    taskUpdater.addArtifact(
-                            List.<Part<?>>of(new TextPart("")),
-                            artifactId,
-                            artifactName,
-                            Map.of("outputType", "GRAPH_NODE_STREAMING", "final", true),
-                            true,   // append
-                            true    // lastChunk
-                    );
-                    done.countDown();
-                }
-        );
-
-        // 5. 等待流式输出完成（或超时），保证 execute 返回前所有事件都已入队
+        /*
+         * 这里开始执行 Spring AI Alibaba Graph。
+         *
+         * stateGraph.compile()
+         *   把 GraphConfiguration 中定义的图编译成可执行对象。
+         *
+         * stream(Map.of("input", text))
+         *   用一个初始 state 启动图。
+         *   这个 state 后续会被 ToyHelloNode 通过 state.value("input", "") 读取。
+         *
+         * doOnNext(...)
+         *   Graph 每产生一帧 NodeOutput，就调用 handleNodeOutput(...) 翻译成 A2A Artifact。
+         *
+         * doOnComplete(taskUpdater::complete)
+         *   Graph 执行完成后，通知 A2A 客户端任务完成。
+         *
+         * blockLast()
+         *   阻塞当前执行流程，直到 Graph 的流式输出结束。
+         */
         try {
-            boolean finished = done.await(STREAM_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-            if (!finished) {
-                log.warn("DeepSeek stream timeout after {}s", STREAM_TIMEOUT_SECONDS);
-                taskUpdater.fail();
-                return;
-            }
-        } catch (InterruptedException ie) {
-            Thread.currentThread().interrupt();
+            stateGraph.compile()
+                    .stream(Map.of("input", text))
+                    .doOnNext(nodeOutput -> handleNodeOutput(nodeOutput, taskUpdater, artifactNum))
+                    .doOnComplete(taskUpdater::complete)
+                    .blockLast();
+        } catch (Exception e) {
+            /*
+             * 如果 Graph 编译、节点执行、模型调用或事件推送过程中出现异常，
+             * 这里会记录日志，并通过 taskUpdater.fail() 通知客户端当前任务失败。
+             */
+            log.error("ToyAgentExecutor execute error", e);
             taskUpdater.fail();
-            return;
-        }
-
-        // 6. 根据是否有异常，发送终态事件
-        if (errorHolder[0] != null) {
-            taskUpdater.fail();
-        } else {
-            taskUpdater.complete();
         }
     }
 
     /**
-     * 处理客户端发起的取消请求。
-     * 当前流式版本暂未实现"中途打断 LLM"，留空作为后续扩展点。
+     * 把一帧 Graph NodeOutput 翻译成一帧 A2A artifact-update 事件。
+     *
+     * 【为什么需要这个方法】
+     *   Spring AI Alibaba Graph 产出的对象是 NodeOutput。
+     *   A2A 客户端认识的是 Artifact / Part。
+     *   所以这里要做一层“协议翻译”：
+     *
+     *     Graph NodeOutput
+     *       → 判断它是不是 StreamingOutput
+     *       → 包装成 TextPart 或 DataPart
+     *       → 调用 taskUpdater.addArtifact(...)
+     *       → A2A SDK 推送 artifact-update 给客户端
+     *
+     * 【三种输出情况】
+     *
+     *   1. StreamingOutput + GRAPH_NODE_STREAMING
+     *      表示节点正在流式输出文本。
+     *      这通常对应大模型正在一段一段吐 token。
+     *      这种内容适合用 TextPart，因为前端可以直接展示。
+     *
+     *   2. StreamingOutput + GRAPH_NODE_FINISHED
+     *      表示当前流式节点已经执行结束。
+     *      这时发送 DataPart，把 nodeOutput.state().data() 作为结构化数据返回。
+     *      它更像一个“节点完成后的状态快照”。
+     *
+     *   3. 普通 NodeOutput
+     *      表示这个输出不是流式输出，通常来自普通处理节点。
+     *      普通节点一般更新的是 Graph state，所以也用 DataPart 返回 state.data()。
+     *
+     * 【Artifact 的字段如何对应 addArtifact 参数】
+     *   taskUpdater.addArtifact(parts, artifactId, name, metadata)
+     *
+     *   - parts：Artifact 里的内容数组，例如 TextPart 或 DataPart。
+     *   - artifactId：当前产物编号，这里使用 artifactNum 自增生成。
+     *   - name：产物名称，这里使用 nodeOutput.node()，也就是 Graph 节点名。
+     *   - metadata：额外元数据，这里放 outputType，方便客户端区分流式中/节点结束。
      */
+    private void handleNodeOutput(NodeOutput nodeOutput,
+                                  TaskUpdater taskUpdater,
+                                  AtomicInteger artifactNum) {
+        /*
+         * 第一层判断：当前 NodeOutput 是否是 StreamingOutput。
+         *
+         * StreamingOutput 表示“这个节点有流式输出”。
+         * 在当前 Demo 中，ToyHelloNode 使用 ChatClient.stream().chatResponse()，
+         * 所以大模型返回内容时会产生 StreamingOutput。
+         *
+         * Java 这里使用的是 instanceof 模式匹配写法：
+         *   如果 nodeOutput 是 StreamingOutput 类型，
+         *   就直接把它转换为 streamingOutput 变量使用。
+         */
+        if (nodeOutput instanceof StreamingOutput<?> streamingOutput) {
+            /*
+             * outputType 表示当前流式输出处于哪个阶段。
+             *
+             * 当前重点关注两类：
+             *   - GRAPH_NODE_STREAMING：节点正在流式输出文本片段。
+             *   - GRAPH_NODE_FINISHED：节点流式输出已经结束。
+             */
+            OutputType outputType = streamingOutput.getOutputType();
+
+            if (outputType == OutputType.GRAPH_NODE_STREAMING) {
+                /*
+                 * 分支一：节点正在流式输出文本。
+                 *
+                 * streamingOutput.message().getText() 是当前这一帧的文本内容，
+                 * 例如模型可能依次返回：
+                 *   “你好”
+                 *   “，我是”
+                 *   “AI 助手”
+                 *
+                 * 这些内容是给用户直接看的自然语言，所以包装成 TextPart。
+                 *
+                 * 最终发给客户端的 Artifact 大致类似：
+                 * {
+                 *   "artifactId": "1",
+                 *   "name": "TOY_HELLO_NODE",
+                 *   "parts": [
+                 *     { "kind": "text", "text": "你好" }
+                 *   ],
+                 *   "metadata": {
+                 *     "outputType": "GRAPH_NODE_STREAMING"
+                 *   }
+                 * }
+                 */
+                taskUpdater.addArtifact(
+                        List.<Part<?>>of(new TextPart(streamingOutput.message().getText())),
+                        String.valueOf(artifactNum.incrementAndGet()),
+                        nodeOutput.node(),
+                        Map.of("outputType", outputType)
+                );
+            } else if (outputType == OutputType.GRAPH_NODE_FINISHED) {
+                /*
+                 * 分支二：流式节点已经执行结束。
+                 *
+                 * 这时不再发送某个 token 文本，而是发送当前 Graph 的完整状态快照。
+                 * nodeOutput.state().data() 通常可以理解为当前 OverAllState 里的 Map 数据。
+                 *
+                 * 结构化 state 更适合用 DataPart 表示，因为它不是单纯给人读的一句话，
+                 * 而是给前端、调试工具或后续程序解析的 JSON 数据。
+                 *
+                 * 最终发给客户端的 Artifact 大致类似：
+                 * {
+                 *   "artifactId": "2",
+                 *   "name": "TOY_HELLO_NODE",
+                 *   "parts": [
+                 *     {
+                 *       "kind": "data",
+                 *       "data": {
+                 *         "input": "用户问题",
+                 *         "output": "节点输出或状态数据"
+                 *       }
+                 *     }
+                 *   ],
+                 *   "metadata": {
+                 *     "outputType": "GRAPH_NODE_FINISHED"
+                 *   }
+                 * }
+                 */
+                taskUpdater.addArtifact(
+                        List.<Part<?>>of(new DataPart(nodeOutput.state().data())),
+                        String.valueOf(artifactNum.incrementAndGet()),
+                        nodeOutput.node(),
+                        Map.of("outputType", outputType)
+                );
+            }
+        } else {
+            /*
+             * 分支三：普通 NodeOutput。
+             *
+             * 如果某个 Graph 节点不是流式节点，例如：
+             *   - 预处理节点 PREPROCESS_NODE
+             *   - 检索节点 RETRIEVE_NODE
+             *   - 普通工具调用节点 TOOL_NODE
+             *
+             * 它通常不会一段一段输出文本，而是一次性更新 Graph state。
+             * 所以这里同样用 DataPart 返回 nodeOutput.state().data()。
+             *
+             * metadata 传 Map.of()，表示没有额外的 outputType 信息。
+             */
+            taskUpdater.addArtifact(
+                    List.<Part<?>>of(new DataPart(nodeOutput.state().data())),
+                    String.valueOf(artifactNum.incrementAndGet()),
+                    nodeOutput.node(),
+                    Map.of()
+            );
+        }
+    }
+
     @Override
     public void cancel(RequestContext context, EventQueue eventQueue) {
-        // TODO: 持有 Disposable 后可在此 dispose() 取消正在进行的 Flux
+        // 与 gradle 版保持一致：暂未实现
     }
 }

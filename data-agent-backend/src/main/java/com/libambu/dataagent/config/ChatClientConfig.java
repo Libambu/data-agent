@@ -58,7 +58,7 @@ public class ChatClientConfig {
                 .defaultAdvisors(
                     new MySimpleLoggerAdvisor(),
                     MessageChatMemoryAdvisor.builder(chatMemory).build(),
-                    qaAdvisor
+                    qaAdvisor//简单的RAG检索
                 ) //添加自定义的日志记录advisor
                 .build(); 
     }
