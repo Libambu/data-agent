@@ -99,6 +99,15 @@ public class ToyAgentExecutor implements AgentExecutor {
         return taskStore.get(taskId);
     }
 
+    /**
+     * 确认用户的输入，恢复图节点的运行，并把后续的节点输出继续发给前端。
+     * @param message
+     * @param compiledGraph
+     * @param taskUpdater
+     * @param artifactNum
+     * @param existingTask
+     * @throws Exception
+     */
     private void resumeExistingTask(Message message,
                                     CompiledGraph compiledGraph,
                                     TaskUpdater taskUpdater,
@@ -269,6 +278,9 @@ public class ToyAgentExecutor implements AgentExecutor {
             }
         }
      */
+    // Graph 每执行完一个节点，都会吐出一个 nodeOutput。
+    // ToyAgentExecutor 监听这些 nodeOutput。
+    // 每监听到一个 nodeOutput，就调用 handleNodeOutput。 
     private void handleNodeOutput(NodeOutput nodeOutput,
                                   TaskUpdater taskUpdater,
                                   AtomicInteger artifactNum) {
