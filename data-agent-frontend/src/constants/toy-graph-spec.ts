@@ -5,3 +5,13 @@ export const TOY_GRAPH_NODE = {
   STUDY_PLAN: 'STUDY_PLAN_NODE',
   WRAP_UP: 'WRAP_UP_NODE',
 } as const
+
+export const TOY_GRAPH_ARTIFACT_OUTPUT = {
+  GRAPH_NODE_FINISHED: 'GRAPH_NODE_FINISHED',
+  GRAPH_NODE_STREAMING: 'GRAPH_NODE_STREAMING',
+} as const
+
+export const TOY_GRAPH_MESSAGE_METADATA = {
+  CONFIRMATION_APPROVED: 'confirmationApproved',
+  CONFIRMATION_FEEDBACK: 'confirmationFeedback',
+} as const

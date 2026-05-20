@@ -1,13 +1,17 @@
 <script setup lang="ts">
 import { Client, ClientFactory } from '@a2a-js/sdk/client'
 import { type AgentCard } from '@a2a-js/sdk'
-import { computed, markRaw, nextTick, onMounted, reactive, ref, shallowRef } from 'vue'
-import { TOY_GRAPH_NODE } from '@/constants/toy-graph-spec'
+import { computed, markRaw, onMounted, reactive, ref, shallowRef } from 'vue'
+import {
+  TOY_GRAPH_ARTIFACT_OUTPUT,
+  TOY_GRAPH_MESSAGE_METADATA,
+  TOY_GRAPH_NODE,
+} from '@/constants/toy-graph-spec'
 import RouteNodeCard from '@/components/route-node-card.vue'
 import StudyPlanNodeCard from '@/components/study-plan-node-card.vue'
 import TravelPlanNodeCard from '@/components/travel-plan-node-card.vue'
 import WrapUpNodeCard from '@/components/wrap-up-node-card.vue'
-import { request } from '@/utils/request'
+import { api } from '@/utils/api-instance.ts'
 
 interface ToyStep {
   id: string
@@ -33,6 +37,11 @@ const factory = new ClientFactory()
 const client = shallowRef<Client | undefined>()
 const steps = reactive<ToyStep[]>([])
 const userInput = ref(DEFAULT_EXAMPLES[0])
+const currentTaskId = ref<string>()
+const currentContextId = ref<string>()
+const awaitingConfirmation = ref(false)
+const confirmationApproved = ref(true)
+const confirmationFeedback = ref('用户确认继续执行')
 const upsertStep = (
   name: string,
   chunk: string,
@@ -42,7 +51,7 @@ const upsertStep = (
   const existing = steps.find((step) => step.name === name)
   if (existing) {
     existing.content += chunk
-    existing.status = status
+    existing.status = status || existing.status
     existing.data = { ...existing.data, ...data }
     return
   }
@@ -71,17 +80,22 @@ const orderedSteps = computed(() => {
 
 const resetSteps = () => {
   steps.splice(0, steps.length)
+  currentTaskId.value = undefined
+  currentContextId.value = undefined
+  awaitingConfirmation.value = false
+  confirmationApproved.value = true
+  confirmationFeedback.value = '用户确认继续执行'
 }
 
-const waitForPaint = async () => {
-  await nextTick()
-  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-}
-
-const handleSend = async () => {
-  const input = userInput.value?.trim() ?? ''
+const streamMessage = async (
+  input: string,
+  keepSteps = false,
+  metadata?: Record<string, unknown>,
+) => {
   if (!client.value || !input || isRunning.value) return
-  resetSteps()
+  if (!keepSteps) {
+    resetSteps()
+  }
   isRunning.value = true
   try {
     const stream = client.value.sendMessageStream({
@@ -89,10 +103,16 @@ const handleSend = async () => {
         messageId: crypto.randomUUID(),
         role: 'user',
         kind: 'message',
+        taskId: currentTaskId.value,
+        contextId: currentContextId.value,
+        metadata,
         parts: [{ kind: 'text', text: input }],
       },
     })
     for await (const event of stream) {
+      currentTaskId.value = 'taskId' in event ? event.taskId : currentTaskId.value
+      currentContextId.value = 'contextId' in event ? event.contextId : currentContextId.value
+
       if (event.kind === 'artifact-update') {
         const artifact = event.artifact
         const artifactName = artifact.name
@@ -100,14 +120,27 @@ const handleSend = async () => {
         const data = artifact.parts.find((p) => p.kind === 'data')?.data
 
         if (artifactName && artifactName in NODE_COMPONENTS) {
-          console.log(artifact)
-          const status: ToyStep['status'] =
-            artifact.metadata?.outputType == 'GRAPH_NODE_FINISHED' ? 'success' : 'pending'
-          upsertStep(artifactName, text, status, data)
-          await waitForPaint()
+          let status: ToyStep['status'] | undefined
+          switch (artifact.metadata?.outputType) {
+            case TOY_GRAPH_ARTIFACT_OUTPUT.GRAPH_NODE_FINISHED:
+              status = 'success'
+              break
+            case TOY_GRAPH_ARTIFACT_OUTPUT.GRAPH_NODE_STREAMING:
+              status = 'pending'
+              break
+            default:
+              status = undefined
+          }
+          if (status) {
+            upsertStep(artifactName, text, status, data)
+          }
         }
       }
+      if (event.kind === 'status-update' && event.status.state === 'input-required') {
+        awaitingConfirmation.value = true
+      }
       if (event.kind === 'status-update' && event.status.state === 'completed') {
+        awaitingConfirmation.value = false
       }
     }
   } finally {
@@ -115,10 +148,26 @@ const handleSend = async () => {
   }
 }
 
+const handleSend = async () => {
+  const input = userInput.value?.trim() ?? ''
+  await streamMessage(input, false)
+}
+
+const submitConfirmation = async () => {
+  awaitingConfirmation.value = false
+  const approved = confirmationApproved.value
+  const feedback = (confirmationFeedback.value || '').trim()
+  await streamMessage(feedback || (approved ? '确认继续' : '取消本次执行'), true, {
+    [TOY_GRAPH_MESSAGE_METADATA.CONFIRMATION_APPROVED]: approved,
+    [TOY_GRAPH_MESSAGE_METADATA.CONFIRMATION_FEEDBACK]:
+      feedback || (approved ? '用户确认继续执行' : '用户取消本次执行'),
+  })
+}
 
 onMounted(async () => {
-  const agentCard = await request.get<unknown, AgentCard>('/.well-known/agent-card.json')
-  client.value = await factory.createFromAgentCard(agentCard)
+  client.value = await factory.createFromAgentCard(
+    (await api.a2acontroller.agentJson()) as AgentCard,
+  )
 })
 </script>
 
@@ -184,11 +233,35 @@ onMounted(async () => {
           :content="step.content"
           :data="step.data"
           :status="step.status"
-          :disabled="isRunning"
         />
       </div>
 
-      <div v-else class="empty-state">
+      <div v-if="awaitingConfirmation" class="human-input-panel">
+        <h3>需要人工输入</h3>
+        <p>请填写确认结果和反馈，提交后会继续执行后续节点。</p>
+        <div class="human-input-panel__field">
+          <div class="human-input-panel__label">确认结果</div>
+          <el-radio-group v-model="confirmationApproved">
+            <el-radio :value="true">确认继续</el-radio>
+            <el-radio :value="false">取消执行</el-radio>
+          </el-radio-group>
+        </div>
+        <div class="human-input-panel__field">
+          <div class="human-input-panel__label">反馈内容</div>
+          <el-input
+            v-model="confirmationFeedback"
+            type="textarea"
+            :rows="3"
+            resize="none"
+            placeholder="请输入反馈，将映射到 confirmationFeedback"
+          />
+        </div>
+        <el-button type="primary" :loading="isRunning" @click="submitConfirmation">
+          提交人工输入
+        </el-button>
+      </div>
+
+      <div v-else-if="!orderedSteps.length" class="empty-state">
         <div class="empty-state__title">还没有节点输出</div>
         <div class="empty-state__desc">
           点击上面的示例，或者自己输入一句需求，就能看到 graph 的执行过程。
@@ -329,6 +402,37 @@ onMounted(async () => {
 .timeline-panel__list {
   display: grid;
   gap: 16px;
+}
+
+.human-input-panel {
+  margin-top: 18px;
+  border: 1px solid rgba(168, 85, 247, 0.24);
+  border-radius: 16px;
+  padding: 16px;
+  background:
+    radial-gradient(circle at top left, rgba(168, 85, 247, 0.1), transparent 32%),
+    linear-gradient(180deg, #ffffff, #faf5ff);
+}
+
+.human-input-panel h3 {
+  margin: 0;
+  font-size: 18px;
+  color: #0f172a;
+}
+
+.human-input-panel p {
+  margin: 8px 0 0;
+  color: #475569;
+}
+
+.human-input-panel__field {
+  margin: 14px 0;
+}
+
+.human-input-panel__label {
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: #334155;
 }
 
 .empty-state {

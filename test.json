@@ -1,0 +1,122 @@
+data: {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+        "id": "b2756fce-ebda-4c8e-949e-d8bfb756ac4c",
+        "contextId": "e779d6d6-2561-429a-8cb0-0c1b0029cc05",
+        "status": {
+            "state": "submitted",
+            "timestamp": "2026-05-20T08:49:07.703559Z"
+        },
+        "artifacts": [],
+        "history": [
+            {
+                "role": "user",
+                "parts": [
+                    {
+                        "text": "我想两周内入门 Python，请给我一个学习计划",
+                        "kind": "text"
+                    }
+                ],
+                "messageId": "730fd98b-8786-427b-98ba-934a497e3148",
+                "contextId": "e779d6d6-2561-429a-8cb0-0c1b0029cc05",
+                "taskId": "b2756fce-ebda-4c8e-949e-d8bfb756ac4c",
+                "kind": "message"
+            }
+        ],
+        "kind": "task"
+    }
+}
+
+data: {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+        "taskId": "b2756fce-ebda-4c8e-949e-d8bfb756ac4c",
+        "artifact": {
+            "artifactId": "1",
+            "name": "__START__",
+            "parts": [
+                {
+                    "data": {
+                        "_graph_execution_id_": "ee29cf88-ceef-4ab1-adc7-b7ec128e2a19",
+                        "input": "我想两周内入门 Python，请给我一个学习计划"
+                    },
+                    "kind": "data"
+                }
+            ],
+            "metadata": {}
+        },
+        "contextId": "e779d6d6-2561-429a-8cb0-0c1b0029cc05",
+        "kind": "artifact-update"
+    }
+}
+
+data: {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+        "taskId": "b2756fce-ebda-4c8e-949e-d8bfb756ac4c",
+        "artifact": {
+            "artifactId": "2",
+            "name": "ROUTE_NODE",
+            "parts": [
+                {
+                    "data": {
+                        "_graph_execution_id_": "ee29cf88-ceef-4ab1-adc7-b7ec128e2a19",
+                        "input": "我想两周内入门 Python，请给我一个学习计划",
+                        "sceneLabel": "学习计划",
+                        "scene": "study"
+                    },
+                    "kind": "data"
+                }
+            ],
+            "metadata": {
+                "outputType": "GRAPH_NODE_FINISHED"
+            }
+        },
+        "contextId": "e779d6d6-2561-429a-8cb0-0c1b0029cc05",
+        "kind": "artifact-update"
+    }
+}
+
+data: {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+        "taskId": "b2756fce-ebda-4c8e-949e-d8bfb756ac4c",
+        "artifact": {
+            "artifactId": "3",
+            "name": "ROUTE_NODE",
+            "parts": [
+                {
+                    "data": {
+                        "_graph_execution_id_": "ee29cf88-ceef-4ab1-adc7-b7ec128e2a19",
+                        "input": "我想两周内入门 Python，请给我一个学习计划",
+                        "sceneLabel": "学习计划",
+                        "scene": "study"
+                    },
+                    "kind": "data"
+                }
+            ],
+            "metadata": {}
+        },
+        "contextId": "e779d6d6-2561-429a-8cb0-0c1b0029cc05",
+        "kind": "artifact-update"
+    }
+}
+
+data: {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+        "taskId": "b2756fce-ebda-4c8e-949e-d8bfb756ac4c",
+        "status": {
+            "state": "input-required",
+            "timestamp": "2026-05-20T08:49:07.714485Z"
+        },
+        "contextId": "e779d6d6-2561-429a-8cb0-0c1b0029cc05",
+        "final": false,
+        "kind": "status-update"
+    }
+}
