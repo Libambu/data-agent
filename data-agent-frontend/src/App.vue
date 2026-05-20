@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Client, ClientFactory } from '@a2a-js/sdk/client'
 import { type AgentCard } from '@a2a-js/sdk'
-import { computed, markRaw, onMounted, reactive, ref, shallowRef } from 'vue'
+import { computed, markRaw, nextTick, onMounted, reactive, ref, shallowRef } from 'vue'
 import {
   TOY_GRAPH_ARTIFACT_OUTPUT,
   TOY_GRAPH_MESSAGE_METADATA,
@@ -87,6 +87,13 @@ const resetSteps = () => {
   confirmationFeedback.value = '用户确认继续执行'
 }
 
+const flushStreamRender = async () => {
+  await nextTick()
+  await new Promise<void>((resolve) => {
+    requestAnimationFrame(() => resolve())
+  })
+}
+
 const streamMessage = async (
   input: string,
   keepSteps = false,
@@ -133,6 +140,7 @@ const streamMessage = async (
           }
           if (status) {
             upsertStep(artifactName, text, status, data)
+            await flushStreamRender()
           }
         }
       }
