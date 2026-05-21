@@ -98,9 +98,7 @@ import java.util.concurrent.Flow;
  *   - 流式方法返回 Flow.Publisher，需要把每一帧通过 SSE 实时推送给客户端
  *   - 非流式方法直接返回单个对象，HTTP 响应一次性返回 JSON 即可
  *
- * 【对应原 Kotlin 实现】
- *   data-agent-backend 中的 A2AController.kt（用 when 表达式分发请求），
- *   这里改写为 Java 17 的 instanceof 模式匹配。
+ * 请求分发在下面两个入口函数中使用 Java 17 的 instanceof 模式匹配进行路由。
  */
 @Slf4j
 @RestController
@@ -256,7 +254,7 @@ public class A2AController {
 
     /**
      * 非流式请求路由：根据 JSON-RPC 请求的具体子类型（method）调用对应的 handler 方法。
-     * 这里 instanceof 模式匹配等价于 Kotlin 的 when (request) is Xxx -> ...。
+     * 这里使用 Java 17 的 instanceof 模式匹配进行分发。
      *
      * 主要 method 与方法的映射：
      *   tasks/get                              → onGetTask

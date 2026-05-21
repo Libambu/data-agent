@@ -36,14 +36,14 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
- * BIRD-SQL dataset 导入测试，对齐 kt 版 BirdSqlDatasetImportTest。
+ * BIRD-SQL dataset 导入测试。
  * <p>
  * 1. {@link #createKnowledgeTest()}：从 dev.json 提取 evidence 与 question/SQL，
  *    写入 glossary_knowledge / question_knowledge。
  * 2. {@link #createSchemeTest()}：从 dev_tables.json 提取库表结构，按
  *    table -> column -> foreign_key 三步批量写入。
  * <p>
- * Java 版用 MyBatis 实现，与 kt 版 Jimmer 的 SaveMode.INSERT_ONLY + @Key 等价：
+ * 使用 MyBatis 实现幂等于 SaveMode.INSERT_ONLY + @Key 的写入语义：
  * mapper 中所有 batchInsertIgnore 都用 ON CONFLICT DO NOTHING 处理唯一键冲突。
  */
 @Slf4j
@@ -256,7 +256,7 @@ class BirdSqlDatasetImportTest {
         if (!columnsToSave.isEmpty()) {
             dbColumnMapper.batchInsertIgnore(columnsToSave);
         }
-        // 用 tableId -> DbTable 的索引避免 N×M 反查 owner（kt 版直接 column.dbTable 拿到）
+        // 用 tableId -> DbTable 的索引避免 N×M 反查 owner
         Map<UUID, DbTable> tableById = new HashMap<>(savedTables.size() * 2);
         for (DbTable st : savedTables) {
             tableById.put(st.getId(), st);

@@ -16,8 +16,8 @@
     </insert>
 
     <!--
-        ON CONFLICT DO NOTHING：等价于 kt 版 SaveMode.INSERT_ONLY 在唯一键冲突时跳过。
-        约束 uq_db_table_name_database (database_id, name) 即对应 kt 版 @Key(name + databaseId)
+        ON CONFLICT DO NOTHING：唯一键冲突时跳过，语义上等价于 INSERT_ONLY。
+        唯一约束 uq_db_table_name_database (database_id, name)。
     -->
     <insert id="batchInsertIgnore">
         INSERT INTO db_table (id, name, description, database_id) VALUES

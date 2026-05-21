@@ -8,8 +8,8 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * DbColumn Mapper。findByDatabaseId 会带上 dbTable 信息，
- * 等价于 kt 版的 fetcher { allScalarFields(); dbTable { allScalarFields() } }。
+ * DbColumn Mapper。findByDatabaseId 会同时 join 出 db_table 信息填充 dbTable 字段，
+ * 供 toDocument() 拼接元数据时使用。
  */
 @Mapper
 public interface DbColumnMapper {

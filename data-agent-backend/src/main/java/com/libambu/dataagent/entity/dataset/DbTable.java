@@ -8,11 +8,10 @@ import lombok.NoArgsConstructor;
 import java.util.UUID;
 
 /**
- * 业务库的"表"元数据。对齐 kt 版 DbTable：
- * (id, name, description, databaseId)
+ * 业务库的"表"元数据：(id, name, description, databaseId)。
  * <p>
- * kt 版还有 columns 这个 OneToMany 反向集合，Java 版我们不在实体里挂集合，
- * 需要的时候直接通过 DbColumnMapper.findByDatabaseId / findByTableId 查询。
+ * 实体上不挂 columns 反向集合，需要列信息时直接通过
+ * DbColumnMapper.findByDatabaseId / findByTableId 查询。
  */
 @Data
 @NoArgsConstructor

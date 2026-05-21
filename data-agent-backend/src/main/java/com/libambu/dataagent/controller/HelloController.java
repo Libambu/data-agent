@@ -4,7 +4,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 对应原 data-agent-backend 中 Kotlin 版的 HelloController
+ * 示例接口：返回一个打招呼的消息。
  */
 @RestController
 public class HelloController {

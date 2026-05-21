@@ -19,7 +19,7 @@ import org.springframework.context.annotation.Configuration;
 import java.util.Map;
 
 /**
- * Graph 配置，对齐 Kotlin 版本的多节点中断分支工作流：
+ * Graph 配置：多节点中断分支工作流
  * START -> ROUTE_NODE -> CONFIRM_NODE -> TRAVEL_PLAN_NODE / STUDY_PLAN_NODE / END -> WRAP_UP_NODE -> END
  */
 @Configuration

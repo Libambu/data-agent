@@ -10,8 +10,7 @@ import java.util.UUID;
 /**
  * DbTable Mapper。
  * <p>
- * 模拟 kt 版 Jimmer 的 saveAll(SaveMode.INSERT_ONLY)+@Key：
- * batchInsertIgnore 在 (database_id, name) 冲突时丢弃。
+ * batchInsertIgnore 在 (database_id, name) 唯一键冲突时丢弃。
  */
 @Mapper
 public interface DbTableMapper {

@@ -8,11 +8,11 @@ import lombok.NoArgsConstructor;
 import java.util.UUID;
 
 /**
- * 外键关系实体，对齐 kt 版 DbForeignKey：
+ * 外键关系实体：
  * <pre>
  *   (id, sourceColumn, targetColumn)
  * </pre>
- * Java 版同样把 ManyToOne 拆成显式 ID + 可选的内嵌对象（用于 join 后展示）。
+ * 同样把 ManyToOne 拆成显式 ID + 可选的内嵌对象（用于 join 后展示）。
  */
 @Data
 @NoArgsConstructor
@@ -31,7 +31,7 @@ public class DbForeignKey {
     /** 仅在查询时填充。 */
     private DbColumn targetColumn;
 
-    /** 等价于 kt 版 DbForeignKeySchemaView.toExpression()。 */
+    /** 返回“source.col = target.col” 形式的外键表达式。 */
     public String toExpression() {
         if (sourceColumn == null || targetColumn == null
                 || sourceColumn.getDbTable() == null || targetColumn.getDbTable() == null) {

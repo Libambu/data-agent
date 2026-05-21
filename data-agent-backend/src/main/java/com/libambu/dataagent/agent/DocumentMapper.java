@@ -13,7 +13,6 @@ import java.util.UUID;
 /**
  * 把数据集实体转成 Spring AI 的 {@link Document}，供向量库写入。
  * <p>
- * 与 kt 版 io.github.qifan777.server.agent.DocumentExtensions 行为一致：
  * 文本部分提供给 embedding 模型，metadata 用于 FilterExpression 过滤。
  */
 public final class DocumentMapper {
@@ -53,8 +52,8 @@ public final class DocumentMapper {
     }
 
     /**
-     * 列文档化。要求 column.dbTable 已通过 join 填充，否则取不到 databaseId / tableId，
-     * 这一点与 kt 版 fetcher{ allScalarFields(); dbTable{ allScalarFields() } } 的语义一致。
+     * 列文档化。要求 column.dbTable 已通过 join 填充，
+     * 否则取不到 databaseId / tableId。
      */
     public static Document toDocument(DbColumn column) {
         DbTable owner = column.getDbTable();

@@ -3,15 +3,15 @@ package com.libambu.dataagent.agent;
 /**
  * Data-Agent 规范常量。
  * <p>
- * 与 kt 版 io.github.qifan777.server.agent.DataAgentSpec 保持完全一致：
- * 定义向量库 Document 的元数据 key 与 vectorType 取值，方便检索时按类型/数据库维度过滤。
+ * 定义向量库 Document 的元数据 key 与 vectorType 取值，
+ * 方便检索时按类型/数据库维度过滤。
  */
 public final class DataAgentSpec {
 
     private DataAgentSpec() {
     }
 
-    /** Graph 名称（与 kt 版保持一致） */
+    /** Graph 名称 */
     public static final String GRAPH_NAME = "data-agent-main-graph";
 
     /** 向量检索相关常量。 */

@@ -8,8 +8,7 @@ import lombok.Builder;
 import java.util.UUID;
 
 /**
- * 业务名词知识。对齐 kt 版 GlossaryKnowledge：
- * (id, databaseId, term, description, synonyms?)
+ * 业务名词知识：(id, databaseId, term, description, synonyms?)
  * synonyms 为可空字段。
  */
 @Data

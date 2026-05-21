@@ -8,8 +8,7 @@ import lombok.NoArgsConstructor;
 import java.util.UUID;
 
 /**
- * 历史问答知识。对齐 kt 版 QuestionKnowledge：
- * (id, databaseId, question, answer)
+ * 历史问答知识：(id, databaseId, question, answer)
  */
 @Data
 @NoArgsConstructor

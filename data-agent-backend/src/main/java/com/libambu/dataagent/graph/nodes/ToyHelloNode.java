@@ -13,11 +13,11 @@ import java.util.Map;
 
 /**
  * 最小 Graph 链路演示节点。
- * 逻辑严格对齐 data-agent-backend-gradle 中的 ToyHelloNode.kt：
+ * 逻辑：
  *   - 从 OverAllState 读取 "input"
- *   - 用 ChatClient（这里复用项目里已有的 deepseekClient Bean）.stream().content() 拿到 Flux<String>
+ *   - 用 ChatClient（复用项目里已有的 deepseekClient Bean）.stream().content() 拿到 Flux<String>
  *   - 把整个 Flux 作为 "output" 放入 state
- *   - extraBody 透传 enable_thinking=false（与 gradle 完全一致）
+ *   - extraBody 透传 enable_thinking=false
  */
 @Component
 public class ToyHelloNode implements NodeAction {

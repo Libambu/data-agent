@@ -53,8 +53,8 @@
     </select>
 
     <!--
-        join db_table 把 dbTable 一起填充，等价于 kt 版的:
-        fetcher { allScalarFields(); dbTable { allScalarFields() } }
+        join db_table 把 dbTable 一起填充，
+        让 toDocument() 能拿到 databaseId / tableName。
     -->
     <select id="findByDatabaseId" resultMap="DbColumnWithTableMap">
         SELECT c.id           AS id,

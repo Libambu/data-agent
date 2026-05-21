@@ -56,9 +56,7 @@
 
     <!--
         join 出 sourceColumn / targetColumn 以及二者各自的 dbTable，
-        等价于 kt 版 fetcher：
-            sourceColumn { allScalarFields(); dbTable { name() } }
-            targetColumn { allScalarFields(); dbTable { name() } }
+        以便后续拼出 "source.col = target.col" 这种外键表达式。
     -->
     <select id="findByDatabaseId" resultMap="DbForeignKeyJoinedMap">
         SELECT fk.id                  AS id,

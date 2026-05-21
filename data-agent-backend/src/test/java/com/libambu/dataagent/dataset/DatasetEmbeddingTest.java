@@ -20,7 +20,7 @@ import java.util.Comparator;
 import java.util.List;
 
 /**
- * 数据集向量化测试，对齐 kt 版 DatasetEmbeddingTest。
+ * 数据集向量化测试。
  * 把 4 类实体（Table / Column / QuestionKnowledge / GlossaryKnowledge）
  * 转为 Document 后按 10 条 chunk 写入向量库（pgvector）。
  */
