@@ -128,3 +128,9 @@ jacoco.exec
 *.swp
 *.swo
 *~
+
+# =========================
+# BIRD 原始 SQLite 物理库（体积 600MB+，按需本地下载，不入库）
+# =========================
+data-agent-backend/src/main/resources/dev_20240627/dev_databases.zip
+data-agent-backend/src/main/resources/dev_20240627/dev_databases/

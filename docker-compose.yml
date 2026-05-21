@@ -1,0 +1,41 @@
+# data-agent 项目本地开发用的 PostgreSQL + pgvector 容器编排文件
+# 兼容 macOS 与 Windows 11（Docker Desktop）。
+# 启动方式：
+#   1) 切到当前文件所在目录（工程根目录）
+#   2) 执行：docker compose up -d
+#
+# 卷与脚本说明：
+#   - 数据持久化在 docker 命名卷 pgdata 中，删容器不丢数据
+#   - 首次启动时（pgdata 为空），会自动按文件名顺序执行
+#     /docker-entrypoint-initdb.d/ 下的 sql：
+#       00-pgvector.sql  -> 建 vector 扩展
+#       10-schema.sql    -> 建业务表（来自 backend 的 database.sql）
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: data-agent-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: data_agent
+      # 让数据库用 UTF-8，避免 Windows 上偶发的中文乱码
+      LANG: C.UTF-8
+    ports:
+      - "5432:5432"
+    volumes:
+      # 数据持久化卷
+      - pgdata:/var/lib/postgresql/data
+      # 首次启动时自动执行：建 pgvector 扩展
+      - ./data-agent-backend/src/main/resources/init-pgvector.sql:/docker-entrypoint-initdb.d/00-pgvector.sql:ro
+      # 首次启动时自动执行：建业务表
+      - ./data-agent-backend/src/main/resources/database.sql:/docker-entrypoint-initdb.d/10-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d data_agent"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
