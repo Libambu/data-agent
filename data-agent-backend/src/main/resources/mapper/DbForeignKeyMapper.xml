@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.libambu.dataagent.mapper.DbForeignKeyMapper">
+
+    <resultMap id="DbForeignKeyJoinedMap" type="com.libambu.dataagent.entity.dataset.DbForeignKey">
+        <id property="id" column="id" javaType="java.util.UUID"/>
+        <result property="sourceColumnId" column="source_column_id" javaType="java.util.UUID"/>
+        <result property="targetColumnId" column="target_column_id" javaType="java.util.UUID"/>
+
+        <association property="sourceColumn" javaType="com.libambu.dataagent.entity.dataset.DbColumn">
+            <id property="id" column="src_id" javaType="java.util.UUID"/>
+            <result property="name" column="src_name"/>
+            <result property="type" column="src_type"/>
+            <result property="description" column="src_description"/>
+            <result property="primaryKey" column="src_is_primary_key"/>
+            <result property="tableId" column="src_table_id" javaType="java.util.UUID"/>
+            <association property="dbTable" javaType="com.libambu.dataagent.entity.dataset.DbTable">
+                <id property="id" column="src_t_id" javaType="java.util.UUID"/>
+                <result property="name" column="src_t_name"/>
+<result property="databaseId" column="src_t_database_id"/>
+            </association>
+        </association>
+
+        <association property="targetColumn" javaType="com.libambu.dataagent.entity.dataset.DbColumn">
+            <id property="id" column="tgt_id" javaType="java.util.UUID"/>
+            <result property="name" column="tgt_name"/>
+            <result property="type" column="tgt_type"/>
+            <result property="description" column="tgt_description"/>
+            <result property="primaryKey" column="tgt_is_primary_key"/>
+            <result property="tableId" column="tgt_table_id" javaType="java.util.UUID"/>
+            <association property="dbTable" javaType="com.libambu.dataagent.entity.dataset.DbTable">
+                <id property="id" column="tgt_t_id" javaType="java.util.UUID"/>
+                <result property="name" column="tgt_t_name"/>
+<result property="databaseId" column="tgt_t_database_id"/>
+            </association>
+        </association>
+    </resultMap>
+
+    <insert id="insert">
+        INSERT INTO db_foreign_key (id, source_column_id, target_column_id)
+        VALUES (#{id}, #{sourceColumnId}, #{targetColumnId})
+    </insert>
+
+    <insert id="batchInsertIgnore">
+        INSERT INTO db_foreign_key (id, source_column_id, target_column_id) VALUES
+        <foreach collection="list" item="it" separator=",">
+            (#{it.id}, #{it.sourceColumnId}, #{it.targetColumnId})
+        </foreach>
+        ON CONFLICT (source_column_id, target_column_id) DO NOTHING
+    </insert>
+
+    <delete id="deleteAll">
+        DELETE FROM db_foreign_key
+    </delete>
+
+    <!--
+        join 出 sourceColumn / targetColumn 以及二者各自的 dbTable，
+        等价于 kt 版 fetcher：
+            sourceColumn { allScalarFields(); dbTable { name() } }
+            targetColumn { allScalarFields(); dbTable { name() } }
+    -->
+    <select id="findByDatabaseId" resultMap="DbForeignKeyJoinedMap">
+        SELECT fk.id                  AS id,
+               fk.source_column_id    AS source_column_id,
+               fk.target_column_id    AS target_column_id,
+
+               sc.id                  AS src_id,
+               sc.name                AS src_name,
+               sc.type                AS src_type,
+               sc.description         AS src_description,
+               sc.is_primary_key      AS src_is_primary_key,
+               sc.table_id            AS src_table_id,
+               st.id                  AS src_t_id,
+               st.name                AS src_t_name,
+               st.database_id         AS src_t_database_id,
+
+               tc.id                  AS tgt_id,
+               tc.name                AS tgt_name,
+               tc.type                AS tgt_type,
+               tc.description         AS tgt_description,
+               tc.is_primary_key      AS tgt_is_primary_key,
+               tc.table_id            AS tgt_table_id,
+               tt.id                  AS tgt_t_id,
+               tt.name                AS tgt_t_name,
+               tt.database_id         AS tgt_t_database_id
+        FROM db_foreign_key fk
+        JOIN db_column sc ON sc.id = fk.source_column_id
+        JOIN db_table  st ON st.id = sc.table_id
+        JOIN db_column tc ON tc.id = fk.target_column_id
+        JOIN db_table  tt ON tt.id = tc.table_id
+        WHERE st.database_id = #{databaseId}
+    </select>
+
+</mapper>

@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.libambu.dataagent.mapper.DbColumnMapper">
+
+    <!-- 仅保存 db_column 自身字段，对应 INSERT 用 -->
+    <resultMap id="DbColumnMap" type="com.libambu.dataagent.entity.dataset.DbColumn">
+        <id property="id" column="id" javaType="java.util.UUID"/>
+        <result property="name" column="name"/>
+        <result property="type" column="type"/>
+        <result property="description" column="description"/>
+        <result property="primaryKey" column="is_primary_key"/>
+        <result property="tableId" column="table_id" javaType="java.util.UUID"/>
+    </resultMap>
+
+    <!-- 带 dbTable 信息的查询结果（join db_table）-->
+    <resultMap id="DbColumnWithTableMap" type="com.libambu.dataagent.entity.dataset.DbColumn">
+        <id property="id" column="id" javaType="java.util.UUID"/>
+        <result property="name" column="name"/>
+        <result property="type" column="type"/>
+        <result property="description" column="description"/>
+        <result property="primaryKey" column="is_primary_key"/>
+        <result property="tableId" column="table_id" javaType="java.util.UUID"/>
+        <association property="dbTable" javaType="com.libambu.dataagent.entity.dataset.DbTable">
+            <id property="id" column="t_id" javaType="java.util.UUID"/>
+            <result property="name" column="t_name"/>
+            <result property="description" column="t_description"/>
+            <result property="databaseId" column="t_database_id"/>
+        </association>
+    </resultMap>
+
+    <insert id="insert">
+        INSERT INTO db_column (id, name, type, description, is_primary_key, table_id)
+        VALUES (#{id}, #{name}, #{type}, #{description}, #{primaryKey}, #{tableId})
+    </insert>
+
+    <insert id="batchInsertIgnore">
+        INSERT INTO db_column (id, name, type, description, is_primary_key, table_id) VALUES
+        <foreach collection="list" item="it" separator=",">
+            (#{it.id}, #{it.name}, #{it.type}, #{it.description}, #{it.primaryKey}, #{it.tableId})
+        </foreach>
+        ON CONFLICT (table_id, name) DO NOTHING
+    </insert>
+
+    <delete id="deleteAll">
+        DELETE FROM db_column
+    </delete>
+
+    <select id="findByTableIdAndName" resultMap="DbColumnMap">
+        SELECT id, name, type, description, is_primary_key, table_id
+        FROM db_column
+        WHERE table_id = #{tableId} AND name = #{name}
+    </select>
+
+    <!--
+        join db_table 把 dbTable 一起填充，等价于 kt 版的:
+        fetcher { allScalarFields(); dbTable { allScalarFields() } }
+    -->
+    <select id="findByDatabaseId" resultMap="DbColumnWithTableMap">
+        SELECT c.id           AS id,
+               c.name         AS name,
+               c.type         AS type,
+               c.description  AS description,
+               c.is_primary_key AS is_primary_key,
+               c.table_id     AS table_id,
+               t.id           AS t_id,
+               t.name         AS t_name,
+               t.description  AS t_description,
+               t.database_id  AS t_database_id
+        FROM db_column c
+        JOIN db_table t ON t.id = c.table_id
+        WHERE t.database_id = #{databaseId}
+    </select>
+
+</mapper>

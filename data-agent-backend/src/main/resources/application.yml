@@ -7,15 +7,12 @@ spring:
     # 当前 Spring Boot 应用的名字
     name: data-agent-backend
 
-  # Redis 连接配置，Spring AI 的 Redis 向量数据库会用到这里的 Redis
-  data:
-    redis:
-      # Redis 服务地址；如果 Redis 跑在本机，就写 localhost
-      host: localhost
-      # Redis 默认端口是 6379
-      port: 6379
-      # 使用 Jedis 作为 Redis 客户端
-      client-type: jedis
+  # PostgreSQL 数据源；业务表（db_table / db_column / 知识库等）和向量库（pgvector）共用同一个实例
+  datasource:
+    url: jdbc:postgresql://localhost:5432/data_agent
+    username: postgres
+    password: postgres
+    driver-class-name: org.postgresql.Driver
 
   ai:
     # OpenAI 兼容接口配置；这里实际接的是阿里云 DashScope 的 OpenAI 兼容模式
@@ -36,27 +33,33 @@ spring:
         options:
           # 文本转向量使用的模型
           model: text-embedding-v4
-          # 向量维度；DashScope 的 text-embedding-v4 可以指定 2048 维
-          dimensions: 2048
+          # 向量维度；text-embedding-v4 使用 1024 维（pgvector HNSW 索引上限是 2000，不能超过）
+          dimensions: 1024
 
-    # Spring AI 向量数据库配置
+    # Spring AI 向量数据库配置：使用 PostgreSQL 的 pgvector 扩展
     vectorstore:
-      # 使用 Redis 作为向量数据库
-      redis:
-        # 启动项目时自动创建 Redis 向量索引
+      pgvector:
+        # 启动项目时自动创建 pgvector 扩展、表与索引
         initialize-schema: true
-        # Redis 里的向量索引名称，可以理解为“表名”
-        index-name: spring-ai-redis-index
-        # 存进 Redis 的每条文档 key 的前缀，例如 doc:xxx
-        prefix: "doc:"
-        # HNSW 是一种向量近似搜索算法，用来加快相似度搜索
-        hnsw:
-          # 每个向量节点最多连接多少个邻居；越大召回率可能越高，但占用内存更多
-          m: 16
-          # 创建索引时的搜索深度；越大索引质量越好，但建索引越慢
-          ef-construction: 200
-          # 查询时的搜索深度；越大结果可能越准，但查询越慢
-          ef-runtime: 10
+        # 索引类型：HNSW 相比 IVF_FLAT 在召回率和速度间更平衡
+        index-type: HNSW
+        # 向量距离度量：和 Spring AI 默认一致，使用余弦距离
+        distance-type: COSINE_DISTANCE
+        # 必须与上面 embedding.dimensions 一致；如更换嵌入模型需先 DROP TABLE vector_store 再重启
+        dimensions: 1024
+        # pgvector 表名前缀（Spring AI 会创建 vector_store 表）
+        schema-name: public
+        table-name: vector_store
+
+# MyBatis 配置
+mybatis:
+  # mapper XML 位置
+  mapper-locations: classpath:mapper/**/*.xml
+  # 实体类别名扫描包，方便 XML 里直接写短类名
+  type-aliases-package: com.libambu.dataagent.entity.dataset
+  configuration:
+    # 数据库列 user_name -> 实体字段 userName
+    map-underscore-to-camel-case: true
 
 logging:
   level:

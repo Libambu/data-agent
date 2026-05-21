@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.libambu.dataagent.mapper.DbTableMapper">
+
+    <resultMap id="DbTableMap" type="com.libambu.dataagent.entity.dataset.DbTable">
+        <id property="id" column="id" javaType="java.util.UUID"/>
+        <result property="name" column="name"/>
+        <result property="description" column="description"/>
+        <result property="databaseId" column="database_id"/>
+    </resultMap>
+
+    <insert id="insert">
+        INSERT INTO db_table (id, name, description, database_id)
+        VALUES (#{id}, #{name}, #{description}, #{databaseId})
+    </insert>
+
+    <!--
+        ON CONFLICT DO NOTHING：等价于 kt 版 SaveMode.INSERT_ONLY 在唯一键冲突时跳过。
+        约束 uq_db_table_name_database (database_id, name) 即对应 kt 版 @Key(name + databaseId)
+    -->
+    <insert id="batchInsertIgnore">
+        INSERT INTO db_table (id, name, description, database_id) VALUES
+        <foreach collection="list" item="it" separator=",">
+            (#{it.id}, #{it.name}, #{it.description}, #{it.databaseId})
+        </foreach>
+        ON CONFLICT (database_id, name) DO NOTHING
+    </insert>
+
+    <delete id="deleteAll">
+        DELETE FROM db_table
+    </delete>
+
+    <select id="findByDatabaseIdAndName" resultMap="DbTableMap">
+        SELECT id, name, description, database_id
+        FROM db_table
+        WHERE database_id = #{databaseId} AND name = #{name}
+    </select>
+
+    <select id="findByDatabaseId" resultMap="DbTableMap">
+        SELECT id, name, description, database_id
+        FROM db_table
+        WHERE database_id = #{databaseId}
+    </select>
+
+    <select id="findById" resultMap="DbTableMap">
+        SELECT id, name, description, database_id
+        FROM db_table
+        WHERE id = #{id}
+    </select>
+
+</mapper>

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.libambu.dataagent.mapper.GlossaryKnowledgeMapper">
+
+    <resultMap id="GlossaryKnowledgeMap" type="com.libambu.dataagent.entity.dataset.GlossaryKnowledge">
+        <id property="id" column="id" javaType="java.util.UUID"/>
+        <result property="databaseId" column="database_id"/>
+        <result property="term" column="term"/>
+        <result property="description" column="description"/>
+        <result property="synonyms" column="synonyms"/>
+    </resultMap>
+
+    <insert id="insert">
+        INSERT INTO glossary_knowledge (id, database_id, term, description, synonyms)
+        VALUES (#{id}, #{databaseId}, #{term}, #{description}, #{synonyms})
+    </insert>
+
+    <insert id="batchInsert">
+        INSERT INTO glossary_knowledge (id, database_id, term, description, synonyms)
+        VALUES
+        <foreach collection="list" item="it" separator=",">
+            (#{it.id}, #{it.databaseId}, #{it.term}, #{it.description}, #{it.synonyms})
+        </foreach>
+    </insert>
+
+    <delete id="deleteAll">
+        DELETE FROM glossary_knowledge
+    </delete>
+
+    <select id="findByDatabaseId" resultMap="GlossaryKnowledgeMap">
+        SELECT id, database_id, term, description, synonyms
+        FROM glossary_knowledge
+        WHERE database_id = #{databaseId}
+    </select>
+
+</mapper>

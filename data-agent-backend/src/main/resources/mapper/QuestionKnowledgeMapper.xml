@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.libambu.dataagent.mapper.QuestionKnowledgeMapper">
+
+    <resultMap id="QuestionKnowledgeMap" type="com.libambu.dataagent.entity.dataset.QuestionKnowledge">
+        <id property="id" column="id" javaType="java.util.UUID"/>
+        <result property="databaseId" column="database_id"/>
+        <result property="question" column="question"/>
+        <result property="answer" column="answer"/>
+    </resultMap>
+
+    <insert id="insert">
+        INSERT INTO question_knowledge (id, database_id, question, answer)
+        VALUES (#{id}, #{databaseId}, #{question}, #{answer})
+    </insert>
+
+    <insert id="batchInsert">
+        INSERT INTO question_knowledge (id, database_id, question, answer)
+        VALUES
+        <foreach collection="list" item="it" separator=",">
+            (#{it.id}, #{it.databaseId}, #{it.question}, #{it.answer})
+        </foreach>
+    </insert>
+
+    <delete id="deleteAll">
+        DELETE FROM question_knowledge
+    </delete>
+
+    <select id="findByDatabaseId" resultMap="QuestionKnowledgeMap">
+        SELECT id, database_id, question, answer
+        FROM question_knowledge
+        WHERE database_id = #{databaseId}
+    </select>
+
+</mapper>
