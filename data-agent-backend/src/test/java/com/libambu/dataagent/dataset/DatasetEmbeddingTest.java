@@ -1,7 +1,7 @@
 package com.libambu.dataagent.dataset;
 
-import com.libambu.dataagent.agent.DataAgentSpec;
-import com.libambu.dataagent.agent.DocumentMapper;
+import com.libambu.dataagent.entity.constant.DataAgentSpec;
+import com.libambu.dataagent.utils.DocumentMapperUtil;
 import com.libambu.dataagent.mapper.DbColumnMapper;
 import com.libambu.dataagent.mapper.DbTableMapper;
 import com.libambu.dataagent.mapper.GlossaryKnowledgeMapper;
@@ -46,13 +46,13 @@ class DatasetEmbeddingTest {
     void embeddingTest() {
         List<Document> documents = new ArrayList<>();
         dbTableMapper.findByDatabaseId(DATABASE_ID)
-                .forEach(t -> documents.add(DocumentMapper.toDocument(t)));
+                .forEach(t -> documents.add(DocumentMapperUtil.toDocument(t)));
         dbColumnMapper.findByDatabaseId(DATABASE_ID)
-                .forEach(c -> documents.add(DocumentMapper.toDocument(c)));
+                .forEach(c -> documents.add(DocumentMapperUtil.toDocument(c)));
         questionKnowledgeMapper.findByDatabaseId(DATABASE_ID)
-                .forEach(q -> documents.add(DocumentMapper.toDocument(q)));
+                .forEach(q -> documents.add(DocumentMapperUtil.toDocument(q)));
         glossaryKnowledgeMapper.findByDatabaseId(DATABASE_ID)
-                .forEach(g -> documents.add(DocumentMapper.toDocument(g)));
+                .forEach(g -> documents.add(DocumentMapperUtil.toDocument(g)));
 
         log.info("总共要向量化 {} 条文档", documents.size());
         for (int i = 0; i < documents.size(); i += CHUNK_SIZE) {

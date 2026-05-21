@@ -1,4 +1,4 @@
-package com.libambu.dataagent.agent;
+package com.libambu.dataagent.entity.constant;
 
 /**
  * Data-Agent 规范常量。

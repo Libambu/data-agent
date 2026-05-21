@@ -1,5 +1,6 @@
-package com.libambu.dataagent.agent;
+package com.libambu.dataagent.utils;
 
+import com.libambu.dataagent.entity.constant.DataAgentSpec;
 import com.libambu.dataagent.entity.dataset.DbColumn;
 import com.libambu.dataagent.entity.dataset.DbTable;
 import com.libambu.dataagent.entity.dataset.GlossaryKnowledge;
@@ -15,9 +16,9 @@ import java.util.UUID;
  * <p>
  * 文本部分提供给 embedding 模型，metadata 用于 FilterExpression 过滤。
  */
-public final class DocumentMapper {
+public final class DocumentMapperUtil {
 
-    private DocumentMapper() {
+    private DocumentMapperUtil() {
     }
 
     public static Document toDocument(GlossaryKnowledge knowledge) {
