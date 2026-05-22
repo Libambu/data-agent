@@ -184,7 +184,7 @@ graph TD
 | `metadata` | jsonb | 元数据，关键字段：`vectorType`（TABLE/COLUMN/QUESTION/GLOSSARY）、`databaseId` |
 | `embedding` | vector(1024) | 1024 维向量（DashScope `text-embedding-v4`） |
 
-灌入由 [DatasetEmbeddingTest](./data-agent-backend/src/test/java/com/libambu/dataagent/dataset/DatasetEmbeddingTest.java) 完成：把 `db_table` / `db_column` / `question_knowledge` / `glossary_knowledge` 4 类记录通过 `DocumentMapper` 转成 `Document` 后批量写入。
+灌入由 [DatasetEmbeddingTest](./data-agent-backend/src/test/java/com/libambu/dataagent/dataset/DatasetEmbeddingTest.java) 完成：把 `db_table` / `db_column` / `question_knowledge` / `glossary_knowledge` 4 类记录通过 `DocumentMapperUtil` 转成 `Document` 后批量写入。
 
 > ⚠️ HNSW 索引限制最大 2000 维，所以我们用 1024 维而不是 2048 维。
 
@@ -210,7 +210,7 @@ graph TD
 
 **Step 3：`embeddingTest` 把这一行映射成 `Document` 对象**
 
-由 [DocumentMapper#toDocument(DbTable)](./data-agent-backend/src/main/java/com/libambu/dataagent/agent/DocumentMapper.java) 完成，规则是 `content = description`、`metadata` 打三个标签：
+由 [DocumentMapperUtil#toDocument(DbTable)](./data-agent-backend/src/main/java/com/libambu/dataagent/utils/DocumentMapperUtil.java) 完成，规则是 `content = description`、`metadata` 打三个标签：
 
 ```json
 {

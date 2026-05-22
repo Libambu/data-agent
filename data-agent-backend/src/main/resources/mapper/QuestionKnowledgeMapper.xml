@@ -33,4 +33,13 @@
         WHERE database_id = #{databaseId}
     </select>
 
+    <select id="findByIds" resultMap="QuestionKnowledgeMap">
+        SELECT id, database_id, question, answer
+        FROM question_knowledge
+        WHERE id IN
+        <foreach collection="ids" item="it" open="(" separator="," close=")">
+            #{it}
+        </foreach>
+    </select>
+
 </mapper>

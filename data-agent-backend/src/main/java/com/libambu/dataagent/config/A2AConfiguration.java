@@ -158,7 +158,7 @@ public class A2AConfiguration {
     @Bean
     public JSONRPCHandler jsonRpcHandler(
             AgentCard agentCard,
-            AgentExecutor agentExecutor,                     // 由 ToyAgentExecutor 注入
+            AgentExecutor agentExecutor,                     // 由 GraphAgentExecutor 注入
             TaskStore taskStore,
             QueueManager queueManager,
             PushNotificationConfigStore pushNotificationConfigStore,
