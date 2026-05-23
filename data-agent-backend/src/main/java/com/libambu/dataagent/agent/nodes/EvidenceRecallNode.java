@@ -7,10 +7,10 @@ import com.libambu.dataagent.entity.constant.DataAgentSpec;
 import com.libambu.dataagent.entity.dataset.QuestionKnowledge;
 import com.libambu.dataagent.entity.dto.EvidenceQueryRewriteDTO;
 import com.libambu.dataagent.mapper.QuestionKnowledgeMapper;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.converter.BeanOutputConverter;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.openai.OpenAiChatOptions;
@@ -39,24 +39,21 @@ import java.util.stream.Collectors;
  * </ol>
  */
 @Component
+@Slf4j
 public class EvidenceRecallNode implements NodeAction {
 
-    private static final Logger logger = LoggerFactory.getLogger(EvidenceRecallNode.class);
+    @Autowired
+    @Qualifier("deepseekClient")
+    private ChatClient deepseekClient;
 
-    private final ChatModel chatModel;
-    private final VectorStore vectorStore;
-    private final QuestionKnowledgeMapper questionKnowledgeMapper;
-    private final PromptManager promptManager;
+    @Autowired
+    private VectorStore vectorStore;
 
-    public EvidenceRecallNode(ChatModel chatModel,
-                              VectorStore vectorStore,
-                              QuestionKnowledgeMapper questionKnowledgeMapper,
-                              PromptManager promptManager) {
-        this.chatModel = chatModel;
-        this.vectorStore = vectorStore;
-        this.questionKnowledgeMapper = questionKnowledgeMapper;
-        this.promptManager = promptManager;
-    }
+    @Autowired
+    private QuestionKnowledgeMapper questionKnowledgeMapper;
+
+    @Autowired
+    private PromptManager promptManager;
 
     @Override
     public Map<String, Object> apply(OverAllState state) {
@@ -68,13 +65,17 @@ public class EvidenceRecallNode implements NodeAction {
                 new BeanOutputConverter<>(EvidenceQueryRewriteDTO.class);
 
         Map<String, Object> rewriteVars = new LinkedHashMap<>();
+        //用户最新的提问
         rewriteVars.put("latest_query", userInput);
+        //规约大模型的输出格式
         rewriteVars.put("format", beanOutputConverter.getFormat());
+        //多轮对话的上下文
         rewriteVars.put("multi_turn", multiTurn);
+        //拼接生成prompt
         String rewritePrompt = promptManager.getEvidenceQueryRewritePromptTemplate().render(rewriteVars);
-        logger.info("Rewrite prompt: {}", rewritePrompt);
+        log.info("Rewrite prompt: {}", rewritePrompt);
 
-        String rewriteResponse = ChatClient.create(chatModel)
+        String rewriteResponse = deepseekClient
                 .prompt()
                 .options(OpenAiChatOptions.builder()
                         .extraBody(Map.of("enable_thinking", false)))
@@ -84,8 +85,8 @@ public class EvidenceRecallNode implements NodeAction {
         if (rewriteResponse == null || rewriteResponse.isBlank()) {
             throw new IllegalArgumentException("Invalid rewrite response");
         }
-        logger.info("Rewrite response: {}", rewriteResponse);
-
+        log.info("Rewrite response: {}", rewriteResponse);
+        //把 rewriteResponse 按 EvidenceQueryRewriteDTO的格式解析
         EvidenceQueryRewriteDTO convert = beanOutputConverter.convert(rewriteResponse);
         if (convert == null) {
             throw new IllegalArgumentException("Invalid rewrite response");
@@ -99,6 +100,7 @@ public class EvidenceRecallNode implements NodeAction {
                 .map(Document::getText)
                 .collect(Collectors.joining("\n"));
 
+        //获取历史对话中question_knowledge的id列表
         List<UUID> ids = knowledgeDocs.stream()
                 .map(d -> uuidOrNull(d.getMetadata(), DataAgentSpec.Retrieval.DocumentMetadataKey.KNOWLEDGE_ID))
                 .filter(Optional::isPresent)
@@ -107,9 +109,10 @@ public class EvidenceRecallNode implements NodeAction {
                 .toList();
         int invalidKnowledgeIdCount = knowledgeDocs.size() - ids.size();
         if (invalidKnowledgeIdCount > 0) {
-            logger.warn("Skipped {} recalled knowledge docs due to invalid knowledgeId metadata", invalidKnowledgeIdCount);
+            log.warn("Skipped {} recalled knowledge docs due to invalid knowledgeId metadata", invalidKnowledgeIdCount);
         }
 
+        //获取对应question列表
         String questionKnowledgeText = "";
         if (!ids.isEmpty()) {
             List<QuestionKnowledge> questions = questionKnowledgeMapper.findByIds(ids);
@@ -118,6 +121,7 @@ public class EvidenceRecallNode implements NodeAction {
                     .collect(Collectors.joining("\n"));
         }
 
+        //将召回结果套进提示词模版中
         String glossaryPrompt = promptManager.getBusinessKnowledgePromptTemplate().render(Map.of(
                 "businessKnowledge", glossaryKnowledgeText.isEmpty() ? "无" : glossaryKnowledgeText
         ));

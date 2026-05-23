@@ -3,6 +3,8 @@ package com.libambu.dataagent.agent.nodes;
 import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.action.NodeAction;
 import com.libambu.dataagent.entity.constant.DataAgentSpec;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
@@ -21,13 +23,11 @@ import java.util.Map;
  * 把相关的表 Document 与列 Document 写回 state，供下游 Schema 选择 / SQL 生成节点使用。
  */
 @Component
+@Slf4j
 public class SchemeReCallNode implements NodeAction {
 
-    private final VectorStore vectorStore;
-
-    public SchemeReCallNode(VectorStore vectorStore) {
-        this.vectorStore = vectorStore;
-    }
+    @Autowired
+    private VectorStore vectorStore;
 
     @Override
     public Map<String, Object> apply(OverAllState state) {
