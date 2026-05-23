@@ -81,6 +81,9 @@ const orderedSteps = computed(() => {
 
 const resetSteps = () => {
   steps.splice(0, steps.length)
+}
+
+const resetConversation = () => {
   currentTaskId.value = undefined
   currentContextId.value = undefined
 }
@@ -100,7 +103,7 @@ const streamMessage = async (
 ) => {
   if (!client.value || !input || isRunning.value) return
   if (!keepSteps) {
-    resetSteps()
+    steps.splice(0, steps.length)
   }
   isRunning.value = true
   try {
@@ -216,6 +219,10 @@ onMounted(async () => {
       </div>
     </section>
 
+    <div class="conversation-actions">
+      <el-button plain :disabled="isRunning" @click="resetConversation">新对话</el-button>
+    </div>
+
     <section class="timeline-panel">
       <div class="timeline-panel__header">
         <div>
@@ -269,6 +276,13 @@ onMounted(async () => {
   background: rgba(255, 255, 255, 0.82);
   backdrop-filter: blur(14px);
   box-shadow: 0 24px 80px rgba(15, 23, 42, 0.08);
+}
+
+.conversation-actions {
+  max-width: 1080px;
+  margin: 16px auto;
+  display: flex;
+  justify-content: flex-end;
 }
 
 .hero-panel {

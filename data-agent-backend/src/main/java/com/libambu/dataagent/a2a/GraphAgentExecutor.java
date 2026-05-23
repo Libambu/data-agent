@@ -13,6 +13,7 @@ import io.a2a.spec.DataPart;
 import io.a2a.spec.Message;
 import io.a2a.spec.Part;
 import io.a2a.spec.TextPart;
+import io.a2a.spec.Task;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -20,6 +21,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 /**
  * A2A Agent 执行器：把用户消息交给 Spring AI Alibaba Graph 执行，
@@ -52,6 +54,10 @@ public class GraphAgentExecutor implements AgentExecutor {
 
         Map<String, Object> initialState = new HashMap<>();
         initialState.put(DataAgentSpec.Graph.StateKey.Input.USER_INPUT, input);
+        initialState.put(
+                DataAgentSpec.Graph.StateKey.Input.MULTI_TURN_CONTEXT,
+                buildMultiTurnContext(context, message)
+        );
         Map<String, Object> metadata = message.getMetadata();
         if (metadata != null) {
             initialState.put(
@@ -124,5 +130,55 @@ public class GraphAgentExecutor implements AgentExecutor {
             return text;
         }
         return null;
+    }
+
+    private String buildMultiTurnContext(RequestContext context, Message currentMessage) {
+        Task task = context.getTask();
+        if (task == null || task.getHistory() == null || task.getHistory().isEmpty()) {
+            return "(无)";
+        }
+
+        String currentMessageId = currentMessage == null ? null : currentMessage.getMessageId();
+        List<String> historyLines = task.getHistory().stream()
+                .filter(message -> message != null)
+                .filter(message -> currentMessageId == null || !currentMessageId.equals(message.getMessageId()))
+                .map(this::formatHistoryMessage)
+                .filter(line -> !line.isBlank())
+                .toList();
+
+        if (historyLines.isEmpty()) {
+            return "(无)";
+        }
+        return String.join("\n", historyLines);
+    }
+
+    private String formatHistoryMessage(Message message) {
+        String content = extractText(message);
+        if (content.isBlank()) {
+            return "";
+        }
+        return roleLabel(message) + ": " + content;
+    }
+
+    private String extractText(Message message) {
+        if (message == null || message.getParts() == null) {
+            return "";
+        }
+        return message.getParts().stream()
+                .filter(part -> part instanceof TextPart)
+                .map(part -> ((TextPart) part).getText())
+                .filter(text -> text != null && !text.isBlank())
+                .collect(Collectors.joining("\n"))
+                .trim();
+    }
+
+    private String roleLabel(Message message) {
+        if (message == null || message.getRole() == null) {
+            return "未知";
+        }
+        return switch (message.getRole()) {
+            case USER -> "用户";
+            case AGENT -> "AI";
+        };
     }
 }
