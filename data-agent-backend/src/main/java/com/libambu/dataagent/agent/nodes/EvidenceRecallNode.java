@@ -86,7 +86,7 @@ public class EvidenceRecallNode implements NodeAction {
             throw new IllegalArgumentException("Invalid rewrite response");
         }
         log.info("Rewrite response: {}", rewriteResponse);
-        //把 rewriteResponse 按 EvidenceQueryRewriteDTO的格式解析
+        //把rewriteResponse 按EvidenceQueryRewriteDTO的格式解析
         EvidenceQueryRewriteDTO convert = beanOutputConverter.convert(rewriteResponse);
         if (convert == null) {
             throw new IllegalArgumentException("Invalid rewrite response");

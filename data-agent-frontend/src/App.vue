@@ -1,57 +1,63 @@
 <script setup lang="ts">
 import { Client, ClientFactory } from '@a2a-js/sdk/client'
+import EvidenceRecallNodeCard from '@/components/evidence-recall-node-card.vue'
+import SchemeRecallNodeCard from '@/components/scheme-recall-node-card.vue'
 import { type AgentCard } from '@a2a-js/sdk'
-import { computed, markRaw, nextTick, onMounted, reactive, ref, shallowRef } from 'vue'
+import { type Component, computed, markRaw, onMounted, reactive, ref, shallowRef } from 'vue'
 import {
-  TOY_GRAPH_ARTIFACT_OUTPUT,
-  TOY_GRAPH_MESSAGE_METADATA,
-  TOY_GRAPH_NODE,
-} from '@/constants/toy-graph-spec'
-import RouteNodeCard from '@/components/route-node-card.vue'
-import StudyPlanNodeCard from '@/components/study-plan-node-card.vue'
-import TravelPlanNodeCard from '@/components/travel-plan-node-card.vue'
-import WrapUpNodeCard from '@/components/wrap-up-node-card.vue'
-import { api } from '@/utils/api-instance.ts'
+  DATA_AGENT_ARTIFACT_OUTPUT,
+  DATA_AGENT_GRAPH_NODE,
+  DATA_AGENT_MESSAGE_METADATA,
+} from '@/constants/data-agent-graph-spec'
+import { request } from '@/utils/request'
 
-interface ToyStep {
+interface GraphStep {
   id: string
   name: string
   content: string
-  data?: Record<string, any>
+  data?: Record<string, unknown>
   status: 'pending' | 'success'
 }
 
-const NODE_COMPONENTS = {
-  [TOY_GRAPH_NODE.ROUTE]: markRaw(RouteNodeCard),
-  [TOY_GRAPH_NODE.TRAVEL_PLAN]: markRaw(TravelPlanNodeCard),
-  [TOY_GRAPH_NODE.STUDY_PLAN]: markRaw(StudyPlanNodeCard),
-  [TOY_GRAPH_NODE.WRAP_UP]: markRaw(WrapUpNodeCard),
+const NODE_COMPONENTS: Record<string, Component> = {
+  [DATA_AGENT_GRAPH_NODE.EVIDENCE_RECALL]: markRaw(EvidenceRecallNodeCard),
+  [DATA_AGENT_GRAPH_NODE.SCHEMA_RECALL]: markRaw(SchemeRecallNodeCard),
 }
 
 const DEFAULT_EXAMPLES = [
-  '帮我做一个杭州周末旅行攻略，想吃本地美食',
-  '我想两周内入门 Python，请给我一个学习计划',
+  'What is the highest percentage of K–12 students eligible for free meals among schools in Alameda County?',
+  'How many schools that are exclusively virtual have an average SAT Math score greater than 400?',
 ]
+const DATABASE_OPTIONS = [
+  'california_schools',
+  'toxicology',
+  'european_football_2',
+  'student_club',
+  'debit_card_specializing',
+  'card_games',
+  'formula_1',
+  'thrombosis_prediction',
+  'codebase_community',
+  'financial',
+] as const
 
 const factory = new ClientFactory()
 const client = shallowRef<Client | undefined>()
-const steps = reactive<ToyStep[]>([])
+const steps = reactive<GraphStep[]>([])
 const userInput = ref(DEFAULT_EXAMPLES[0])
+const selectedDatabase = ref<(typeof DATABASE_OPTIONS)[number]>('california_schools')
 const currentTaskId = ref<string>()
 const currentContextId = ref<string>()
-const awaitingConfirmation = ref(false)
-const confirmationApproved = ref(true)
-const confirmationFeedback = ref('用户确认继续执行')
 const upsertStep = (
   name: string,
   chunk: string,
-  status: ToyStep['status'],
-  data: Record<string, any> = {},
+  status: GraphStep['status'],
+  data: Record<string, unknown> = {},
 ) => {
   const existing = steps.find((step) => step.name === name)
   if (existing) {
     existing.content += chunk
-    existing.status = status || existing.status
+    existing.status = status
     existing.data = { ...existing.data, ...data }
     return
   }
@@ -67,31 +73,24 @@ const upsertStep = (
 const isRunning = ref(false)
 
 const orderedSteps = computed(() => {
-  return [...steps].sort((a, b) => {
-    const order: string[] = [
-      TOY_GRAPH_NODE.ROUTE,
-      TOY_GRAPH_NODE.TRAVEL_PLAN,
-      TOY_GRAPH_NODE.STUDY_PLAN,
-      TOY_GRAPH_NODE.WRAP_UP,
-    ]
-    return order.indexOf(a.name) - order.indexOf(b.name)
-  })
+  const flowOrder = [DATA_AGENT_GRAPH_NODE.EVIDENCE_RECALL, DATA_AGENT_GRAPH_NODE.SCHEMA_RECALL]
+  return flowOrder
+    .map((name) => steps.find((step) => step.name === name))
+    .filter((step): step is GraphStep => Boolean(step))
 })
 
 const resetSteps = () => {
   steps.splice(0, steps.length)
   currentTaskId.value = undefined
   currentContextId.value = undefined
-  awaitingConfirmation.value = false
-  confirmationApproved.value = true
-  confirmationFeedback.value = '用户确认继续执行'
 }
 
-const flushStreamRender = async () => {
-  await nextTick()
-  await new Promise<void>((resolve) => {
-    requestAnimationFrame(() => resolve())
-  })
+const markAllPendingStepAsSuccess = () => {
+  for (const step of steps) {
+    if (step.status === 'pending') {
+      step.status = 'success'
+    }
+  }
 }
 
 const streamMessage = async (
@@ -112,7 +111,10 @@ const streamMessage = async (
         kind: 'message',
         taskId: currentTaskId.value,
         contextId: currentContextId.value,
-        metadata,
+        metadata: {
+          [DATA_AGENT_MESSAGE_METADATA.DATABASE_ID]: selectedDatabase.value,
+          ...(metadata ?? {}),
+        },
         parts: [{ kind: 'text', text: input }],
       },
     })
@@ -126,29 +128,16 @@ const streamMessage = async (
         const text = artifact.parts.find((p) => p.kind === 'text')?.text || ''
         const data = artifact.parts.find((p) => p.kind === 'data')?.data
 
-        if (artifactName && artifactName in NODE_COMPONENTS) {
-          let status: ToyStep['status'] | undefined
-          switch (artifact.metadata?.outputType) {
-            case TOY_GRAPH_ARTIFACT_OUTPUT.GRAPH_NODE_FINISHED:
-              status = 'success'
-              break
-            case TOY_GRAPH_ARTIFACT_OUTPUT.GRAPH_NODE_STREAMING:
-              status = 'pending'
-              break
-            default:
-              status = undefined
-          }
-          if (status) {
-            upsertStep(artifactName, text, status, data)
-            await flushStreamRender()
-          }
+        if (artifactName) {
+          console.log(data)
+          const outputType = String(artifact.metadata?.outputType ?? '')
+          const status: GraphStep['status'] =
+            outputType === DATA_AGENT_ARTIFACT_OUTPUT.GRAPH_NODE_FINISHED ? 'success' : 'pending'
+          upsertStep(artifactName, text, status, data)
         }
       }
-      if (event.kind === 'status-update' && event.status.state === 'input-required') {
-        awaitingConfirmation.value = true
-      }
       if (event.kind === 'status-update' && event.status.state === 'completed') {
-        awaitingConfirmation.value = false
+        markAllPendingStepAsSuccess()
       }
     }
   } finally {
@@ -161,20 +150,9 @@ const handleSend = async () => {
   await streamMessage(input, false)
 }
 
-const submitConfirmation = async () => {
-  awaitingConfirmation.value = false
-  const approved = confirmationApproved.value
-  const feedback = (confirmationFeedback.value || '').trim()
-  await streamMessage(feedback || (approved ? '确认继续' : '取消本次执行'), true, {
-    [TOY_GRAPH_MESSAGE_METADATA.CONFIRMATION_APPROVED]: approved,
-    [TOY_GRAPH_MESSAGE_METADATA.CONFIRMATION_FEEDBACK]:
-      feedback || (approved ? '用户确认继续执行' : '用户取消本次执行'),
-  })
-}
-
 onMounted(async () => {
   client.value = await factory.createFromAgentCard(
-    (await api.a2acontroller.agentJson()) as AgentCard,
+    (await request.get('/.well-known/agent-card.json')) as AgentCard,
   )
 })
 </script>
@@ -184,10 +162,10 @@ onMounted(async () => {
     <section class="hero-panel">
       <div class="hero-panel__copy">
         <div class="hero-panel__eyebrow">Graph Tutorial Demo</div>
-        <h1 class="hero-panel__title">一个输入，看看它如何在分支节点里流动</h1>
+        <h1 class="hero-panel__title">一个输入，观察 Data Agent 的节点执行轨迹</h1>
         <p class="hero-panel__desc">
-          这个页面会把 graph 的每个节点都展示成一张卡片。你可以很直观地看到：
-          先路由，再进入不同分支，最后统一收尾。
+          页面会把后端返回的节点结果按时间顺序实时展示，不再绑定固定 demo 分支节点，
+          可以直接适配新的 EVIDENCE_RECALL 节点。
         </p>
       </div>
 
@@ -204,12 +182,28 @@ onMounted(async () => {
           </button>
         </div>
 
+        <div class="hero-panel__db">
+          <span class="hero-panel__db-label">数据库</span>
+          <el-select
+            v-model="selectedDatabase"
+            class="hero-panel__db-select"
+            placeholder="请选择数据库"
+          >
+            <el-option
+              v-for="database in DATABASE_OPTIONS"
+              :key="database"
+              :label="database"
+              :value="database"
+            />
+          </el-select>
+        </div>
+
         <el-input
           v-model="userInput"
           :rows="4"
           type="textarea"
           resize="none"
-          placeholder="输入一个旅行需求，或者一个学习目标，然后回车或点击运行"
+          placeholder="输入一个业务分析问题"
           @keydown.enter.exact.prevent="handleSend"
         />
 
@@ -217,7 +211,7 @@ onMounted(async () => {
           <el-button type="primary" size="large" :loading="isRunning" @click="handleSend">
             {{ isRunning ? '运行中...' : '运行 Graph' }}
           </el-button>
-          <span class="hero-panel__hint">推荐先试试“杭州周末旅行攻略”或“Python 学习计划”。</span>
+          <span class="hero-panel__hint">建议先用示例问题体验 Evidence Recall 节点。</span>
         </div>
       </div>
     </section>
@@ -234,42 +228,19 @@ onMounted(async () => {
       </div>
 
       <div v-if="orderedSteps.length" class="timeline-panel__list">
-        <component
-          v-for="step in orderedSteps"
-          :key="step.id"
-          :is="NODE_COMPONENTS[step.name as keyof typeof NODE_COMPONENTS]"
-          :content="step.content"
-          :data="step.data"
-          :status="step.status"
-        />
-      </div>
-
-      <div v-if="awaitingConfirmation" class="human-input-panel">
-        <h3>需要人工输入</h3>
-        <p>请填写确认结果和反馈，提交后会继续执行后续节点。</p>
-        <div class="human-input-panel__field">
-          <div class="human-input-panel__label">确认结果</div>
-          <el-radio-group v-model="confirmationApproved">
-            <el-radio :value="true">确认继续</el-radio>
-            <el-radio :value="false">取消执行</el-radio>
-          </el-radio-group>
-        </div>
-        <div class="human-input-panel__field">
-          <div class="human-input-panel__label">反馈内容</div>
-          <el-input
-            v-model="confirmationFeedback"
-            type="textarea"
-            :rows="3"
-            resize="none"
-            placeholder="请输入反馈，将映射到 confirmationFeedback"
+        <template v-for="step in orderedSteps" :key="step.id">
+          <component
+            v-if="NODE_COMPONENTS[step.name]"
+            :is="NODE_COMPONENTS[step.name]"
+            :name="step.name"
+            :content="step.content"
+            :data="step.data"
+            :status="step.status"
           />
-        </div>
-        <el-button type="primary" :loading="isRunning" @click="submitConfirmation">
-          提交人工输入
-        </el-button>
+        </template>
       </div>
 
-      <div v-else-if="!orderedSteps.length" class="empty-state">
+      <div v-else class="empty-state">
         <div class="empty-state__title">还没有节点输出</div>
         <div class="empty-state__desc">
           点击上面的示例，或者自己输入一句需求，就能看到 graph 的执行过程。
@@ -370,6 +341,22 @@ onMounted(async () => {
   flex-wrap: wrap;
 }
 
+.hero-panel__db {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.hero-panel__db-label {
+  font-size: 13px;
+  color: #334155;
+  white-space: nowrap;
+}
+
+.hero-panel__db-select {
+  flex: 1;
+}
+
 .hero-panel__hint {
   font-size: 13px;
   color: #64748b;
@@ -412,34 +399,54 @@ onMounted(async () => {
   gap: 16px;
 }
 
-.human-input-panel {
-  margin-top: 18px;
-  border: 1px solid rgba(168, 85, 247, 0.24);
-  border-radius: 16px;
+.node-card {
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 18px;
+  background: #fff;
   padding: 16px;
-  background:
-    radial-gradient(circle at top left, rgba(168, 85, 247, 0.1), transparent 32%),
-    linear-gradient(180deg, #ffffff, #faf5ff);
 }
 
-.human-input-panel h3 {
-  margin: 0;
-  font-size: 18px;
+.node-card--success {
+  border-color: rgba(34, 197, 94, 0.45);
+}
+
+.node-card__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.node-card__title {
+  font-size: 15px;
+  font-weight: 700;
   color: #0f172a;
 }
 
-.human-input-panel p {
-  margin: 8px 0 0;
+.node-card__status {
+  font-size: 12px;
+  border-radius: 999px;
+  padding: 4px 10px;
+  background: #f1f5f9;
   color: #475569;
 }
 
-.human-input-panel__field {
-  margin: 14px 0;
+.node-card__content {
+  margin-top: 12px;
+  white-space: pre-wrap;
+  line-height: 1.8;
+  color: #334155;
 }
 
-.human-input-panel__label {
-  margin-bottom: 8px;
-  font-size: 13px;
+.node-card__data {
+  margin-top: 12px;
+  border-radius: 12px;
+  padding: 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  overflow-x: auto;
+  font-size: 12px;
+  line-height: 1.6;
   color: #334155;
 }
 

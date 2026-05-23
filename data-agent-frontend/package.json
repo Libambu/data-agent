@@ -10,20 +10,16 @@
     "build-only": "vite build",
     "type-check": "vue-tsc --build",
     "lint": "run-s lint:*",
-    "lint:oxlint": "oxlint . --fix",
-    "lint:eslint": "eslint . --fix --cache",
-    "format": "prettier --write --experimental-cli src/",
-    "api": "node scripts/generate-api.js"
+    "lint:oxlint": "oxlint  --fix",
+    "lint:eslint": "eslint  --fix --cache",
+    "format": "prettier --write --experimental-cli src"
   },
   "dependencies": {
     "@a2a-js/sdk": "^0.3.13",
     "@element-plus/icons-vue": "^2.3.2",
-    "adm-zip": "^0.5.16",
     "axios": "^1.13.6",
     "element-plus": "^2.13.6",
-    "fs-extra": "^11.3.4",
     "pinia": "^3.0.4",
-    "uuid": "^13.0.0",
     "vue": "^3.5.30",
     "vue-router": "^5.0.3"
   },
