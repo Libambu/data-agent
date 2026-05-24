@@ -35,7 +35,7 @@ public class Schema {
     private String databaseId;
     private List<DbTableSchemaView> dbTables = new ArrayList<>();
     private List<DbForeignKeySchemaView> dbForeignKeys = new ArrayList<>();
-    private boolean enableExampleSampling = false;
+    private boolean enableExampleSampling = true;
 
     public Schema(String databaseId,
                   List<DbTableSchemaView> dbTables,

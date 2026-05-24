@@ -2,6 +2,7 @@
 import { Client, ClientFactory } from '@a2a-js/sdk/client'
 import EvidenceRecallNodeCard from '@/components/evidence-recall-node-card.vue'
 import SchemeRecallNodeCard from '@/components/scheme-recall-node-card.vue'
+import TableRelationNodeCard from '@/components/table-relation-node-card.vue'
 import { type AgentCard } from '@a2a-js/sdk'
 import { type Component, computed, markRaw, onMounted, reactive, ref, shallowRef } from 'vue'
 import {
@@ -9,7 +10,7 @@ import {
   DATA_AGENT_GRAPH_NODE,
   DATA_AGENT_MESSAGE_METADATA,
 } from '@/constants/data-agent-graph-spec'
-import { request } from '@/utils/request'
+import { getAgentCard } from '@/utils/api-instance.ts'
 
 interface GraphStep {
   id: string
@@ -22,6 +23,7 @@ interface GraphStep {
 const NODE_COMPONENTS: Record<string, Component> = {
   [DATA_AGENT_GRAPH_NODE.EVIDENCE_RECALL]: markRaw(EvidenceRecallNodeCard),
   [DATA_AGENT_GRAPH_NODE.SCHEMA_RECALL]: markRaw(SchemeRecallNodeCard),
+  [DATA_AGENT_GRAPH_NODE.TABLE_RELATION]: markRaw(TableRelationNodeCard),
 }
 
 const DEFAULT_EXAMPLES = [
@@ -73,7 +75,11 @@ const upsertStep = (
 const isRunning = ref(false)
 
 const orderedSteps = computed(() => {
-  const flowOrder = [DATA_AGENT_GRAPH_NODE.EVIDENCE_RECALL, DATA_AGENT_GRAPH_NODE.SCHEMA_RECALL]
+  const flowOrder = [
+    DATA_AGENT_GRAPH_NODE.EVIDENCE_RECALL,
+    DATA_AGENT_GRAPH_NODE.SCHEMA_RECALL,
+    DATA_AGENT_GRAPH_NODE.TABLE_RELATION,
+  ]
   return flowOrder
     .map((name) => steps.find((step) => step.name === name))
     .filter((step): step is GraphStep => Boolean(step))
@@ -81,9 +87,6 @@ const orderedSteps = computed(() => {
 
 const resetSteps = () => {
   steps.splice(0, steps.length)
-}
-
-const resetConversation = () => {
   currentTaskId.value = undefined
   currentContextId.value = undefined
 }
@@ -103,7 +106,7 @@ const streamMessage = async (
 ) => {
   if (!client.value || !input || isRunning.value) return
   if (!keepSteps) {
-    steps.splice(0, steps.length)
+    resetSteps()
   }
   isRunning.value = true
   try {
@@ -132,7 +135,6 @@ const streamMessage = async (
         const data = artifact.parts.find((p) => p.kind === 'data')?.data
 
         if (artifactName) {
-          console.log(data)
           const outputType = String(artifact.metadata?.outputType ?? '')
           const status: GraphStep['status'] =
             outputType === DATA_AGENT_ARTIFACT_OUTPUT.GRAPH_NODE_FINISHED ? 'success' : 'pending'
@@ -154,9 +156,7 @@ const handleSend = async () => {
 }
 
 onMounted(async () => {
-  client.value = await factory.createFromAgentCard(
-    (await request.get('/.well-known/agent-card.json')) as AgentCard,
-  )
+  client.value = await factory.createFromAgentCard((await getAgentCard()) as AgentCard)
 })
 </script>
 
@@ -219,10 +219,6 @@ onMounted(async () => {
       </div>
     </section>
 
-    <div class="conversation-actions">
-      <el-button plain :disabled="isRunning" @click="resetConversation">新对话</el-button>
-    </div>
-
     <section class="timeline-panel">
       <div class="timeline-panel__header">
         <div>
@@ -276,13 +272,6 @@ onMounted(async () => {
   background: rgba(255, 255, 255, 0.82);
   backdrop-filter: blur(14px);
   box-shadow: 0 24px 80px rgba(15, 23, 42, 0.08);
-}
-
-.conversation-actions {
-  max-width: 1080px;
-  margin: 16px auto;
-  display: flex;
-  justify-content: flex-end;
 }
 
 .hero-panel {

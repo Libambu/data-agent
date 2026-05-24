@@ -18,7 +18,7 @@ spring:
     # OpenAI 兼容接口配置；这里实际接的是阿里云 DashScope 的 OpenAI 兼容模式
     openai:
       # DashScope 的 API Key
-      api-key: "sk-c324740aa2b443f09158debfaa705f56"
+      api-key: "sk-b505ed844af34120b70357dab398b637"
       # DashScope OpenAI 兼容模式的请求地址
       base-url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
