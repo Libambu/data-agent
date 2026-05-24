@@ -3,8 +3,12 @@ package com.libambu.dataagent.config;
 import com.alibaba.cloud.ai.graph.KeyStrategy;
 import com.alibaba.cloud.ai.graph.KeyStrategyFactory;
 import com.alibaba.cloud.ai.graph.StateGraph;
+import com.alibaba.cloud.ai.graph.action.AsyncEdgeAction;
 import com.alibaba.cloud.ai.graph.action.AsyncNodeAction;
+import com.libambu.dataagent.agent.edges.FeasibilityAssessmentEdge;
 import com.libambu.dataagent.agent.nodes.EvidenceRecallNode;
+import com.libambu.dataagent.agent.nodes.FeasibilityAssessmentNode;
+import com.libambu.dataagent.agent.nodes.PlannerNode;
 import com.libambu.dataagent.agent.nodes.SchemeReCallNode;
 import com.libambu.dataagent.agent.nodes.TableRelationNode;
 import com.libambu.dataagent.entity.constant.DataAgentSpec;
@@ -22,14 +26,17 @@ public class GraphConfiguration {
 
     /**
      * 数据 Agent 主链路 Graph：
-     * START -> EVIDENCE_RECALL_NODE -> SCHEME_RECALL_NODE -> TABLE_RELATION_NODE -> END
+     * START -> EVIDENCE_RECALL_NODE -> SCHEME_RECALL_NODE -> TABLE_RELATION_NODE
+     *       -> FEASIBILITY_ASSESSMENT_NODE -> PLANNER_NODE / END
      * <p>
-     * 当前对齐 kt 版的最小可运行编排，后续会接入 PLANNER / SQL / Python 等节点。
+     * 当前对齐 kt 版的召回、可行性评估与任务拆解编排。
      */
     @Bean
     public StateGraph dataAgentMainGraph(EvidenceRecallNode evidenceRecallNode,
                                          SchemeReCallNode schemeReCallNode,
-                                         TableRelationNode tableRelationNode) throws Exception {
+                                         TableRelationNode tableRelationNode,
+                                         FeasibilityAssessmentNode feasibilityAssessmentNode,
+                                         PlannerNode plannerNode) throws Exception {
         KeyStrategyFactory keyStrategyFactory = () -> {
             Map<String, KeyStrategy> map = new HashMap<>();
             map.put(DataAgentSpec.Graph.StateKey.Input.USER_INPUT, KeyStrategy.REPLACE);
@@ -40,6 +47,8 @@ public class GraphConfiguration {
             map.put(DataAgentSpec.Graph.StateKey.Recall.TABLE_SCHEMA, KeyStrategy.REPLACE);
             map.put(DataAgentSpec.Graph.StateKey.Recall.COLUMN_SCHEMA, KeyStrategy.REPLACE);
             map.put(DataAgentSpec.Graph.StateKey.Recall.TABLE_RELATION, KeyStrategy.REPLACE);
+            map.put(DataAgentSpec.Graph.StateKey.Execution.FEASIBILITY_RESULT, KeyStrategy.REPLACE);
+            map.put(DataAgentSpec.Graph.StateKey.Planning.PLAN, KeyStrategy.REPLACE);
             return map;
         };
 
@@ -47,9 +56,20 @@ public class GraphConfiguration {
                 .addNode(DataAgentSpec.Graph.Node.EVIDENCE_RECALL, AsyncNodeAction.node_async(evidenceRecallNode))
                 .addNode(DataAgentSpec.Graph.Node.SCHEMA_RECALL, AsyncNodeAction.node_async(schemeReCallNode))
                 .addNode(DataAgentSpec.Graph.Node.TABLE_RELATION, AsyncNodeAction.node_async(tableRelationNode))
+                .addNode(DataAgentSpec.Graph.Node.FEASIBILITY_ASSESSMENT, AsyncNodeAction.node_async(feasibilityAssessmentNode))
+                .addNode(DataAgentSpec.Graph.Node.PLANNER, AsyncNodeAction.node_async(plannerNode))
                 .addEdge(StateGraph.START, DataAgentSpec.Graph.Node.EVIDENCE_RECALL)
                 .addEdge(DataAgentSpec.Graph.Node.EVIDENCE_RECALL, DataAgentSpec.Graph.Node.SCHEMA_RECALL)
                 .addEdge(DataAgentSpec.Graph.Node.SCHEMA_RECALL, DataAgentSpec.Graph.Node.TABLE_RELATION)
-                .addEdge(DataAgentSpec.Graph.Node.TABLE_RELATION, StateGraph.END);
+                .addEdge(DataAgentSpec.Graph.Node.TABLE_RELATION, DataAgentSpec.Graph.Node.FEASIBILITY_ASSESSMENT)
+                .addConditionalEdges(
+                        DataAgentSpec.Graph.Node.FEASIBILITY_ASSESSMENT,
+                        AsyncEdgeAction.edge_async(new FeasibilityAssessmentEdge()),
+                        Map.of(
+                                DataAgentSpec.Graph.Node.PLANNER, DataAgentSpec.Graph.Node.PLANNER,
+                                StateGraph.END, StateGraph.END
+                        )
+                )
+                .addEdge(DataAgentSpec.Graph.Node.PLANNER, StateGraph.END);
     }
 }

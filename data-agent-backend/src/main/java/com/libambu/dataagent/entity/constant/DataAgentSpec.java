@@ -86,8 +86,8 @@ public final class DataAgentSpec {
                 private HumanReview() {
                 }
 
-                public static final String FEEDBACK = "HUMAN_FEEDBACK_NODE_OUTPUT";
-                public static final String REVIEW_ENABLED = "HUMAN_REVIEW_ENABLED";
+                public static final String CONFIRMATION_APPROVED = "confirmationApproved";
+                public static final String CONFIRMATION_FEEDBACK = "confirmationFeedback";
                 public static final String NEXT_NODE = "HUMAN_NEXT_NODE";
             }
 

@@ -35,7 +35,7 @@ public class Schema {
     private String databaseId;
     private List<DbTableSchemaView> dbTables = new ArrayList<>();
     private List<DbForeignKeySchemaView> dbForeignKeys = new ArrayList<>();
-    private boolean enableExampleSampling = true;
+    private boolean enableExampleSampling = false;
 
     public Schema(String databaseId,
                   List<DbTableSchemaView> dbTables,
@@ -51,7 +51,7 @@ public class Schema {
 
     public String buildSchemePrompt(SchemaDataSourceProvider dataSourceProvider) {
         StringBuilder schemaBuilder = new StringBuilder();
-        schemaBuilder.append("【DB_ID】").append(databaseId).append("\n");
+        schemaBuilder.append("【DB_ID】 ").append(databaseId).append("\n");
         for (DbTableSchemaView dbTable : safeList(dbTables)) {
             schemaBuilder.append(buildTablePrompt(dbTable, dataSourceProvider));
         }

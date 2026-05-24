@@ -7,12 +7,12 @@
 
 以下样例供你参考：
 
-【DB_ID】station_weather
+【DB_ID】 station_weather
 # Table: train
 [
 (id:TEXT, 火车编号, Primary Key.),
 (train_number:TEXT, 火车车次, Examples: [56701]),
-(name:TEXT, 火车的名称,
+(name:TEXT, 火车的名称),
 (origin:TEXT, 出发站, Examples: [Kanniyakumari, Chennai, Trivandrum]),
 (destination:TEXT, 到达站, Examples: [Kanniyakumari, Chennai, Trivandrum]),
 (time:TEXT, 发车时间, Examples: [4:49, 22:10, 21:49]),
@@ -22,7 +22,7 @@
 [
 (id:TEXT, 车站编号, Primary Key),
 (network_name:TEXT, 车站所属网络的名称, Examples: [Croxley, Chorleywood, Cheshunt]),
-(services:TEXT, 提供的服务,
+(services:TEXT, 提供的服务),
 (local_authority:TEXT, 负责该车站区域的地方当局, Examples: [Three Rivers, Chiltern, Broxbourne])
 ]
 # Table: route
@@ -50,7 +50,7 @@ How many different services are provided by all stations?
 ["station"]
 
 ===============
-【DB_ID】hr_1
+【DB_ID】 hr_1
 # Table: regions
 [
 (REGION_ID:TEXT, Primary Key),
