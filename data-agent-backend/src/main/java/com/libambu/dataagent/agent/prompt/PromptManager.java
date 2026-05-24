@@ -17,15 +17,18 @@ public class PromptManager {
     private final PromptTemplate evidenceQueryRewritePromptTemplate;
     private final PromptTemplate businessKnowledgePromptTemplate;
     private final PromptTemplate agentKnowledgePromptTemplate;
+    private final PromptTemplate mixSelectorPromptTemplate;
 
     public PromptManager(
             @Value("classpath:/prompts/evidence-query-rewrite.st") Resource evidenceQueryRewriteResource,
             @Value("classpath:/prompts/business-knowledge.st") Resource businessKnowledgeResource,
-            @Value("classpath:/prompts/agent-knowledge.st") Resource agentKnowledgeResource
+            @Value("classpath:/prompts/agent-knowledge.st") Resource agentKnowledgeResource,
+            @Value("classpath:/prompts/mix-selector.st") Resource mixSelectorResource
     ) {
         this.evidenceQueryRewritePromptTemplate = new PromptTemplate(evidenceQueryRewriteResource);
         this.businessKnowledgePromptTemplate = new PromptTemplate(businessKnowledgeResource);
         this.agentKnowledgePromptTemplate = new PromptTemplate(agentKnowledgeResource);
+        this.mixSelectorPromptTemplate = new PromptTemplate(mixSelectorResource);
     }
 
     public PromptTemplate getEvidenceQueryRewritePromptTemplate() {
@@ -38,5 +41,9 @@ public class PromptManager {
 
     public PromptTemplate getAgentKnowledgePromptTemplate() {
         return agentKnowledgePromptTemplate;
+    }
+
+    public PromptTemplate getMixSelectorPromptTemplate() {
+        return mixSelectorPromptTemplate;
     }
 }

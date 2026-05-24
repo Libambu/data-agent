@@ -10,6 +10,21 @@
         <result property="databaseId" column="database_id"/>
     </resultMap>
 
+    <resultMap id="DbTableWithColumnsMap" type="com.libambu.dataagent.entity.dataset.DbTable">
+        <id property="id" column="id" javaType="java.util.UUID"/>
+        <result property="name" column="name"/>
+        <result property="description" column="description"/>
+        <result property="databaseId" column="database_id"/>
+        <collection property="columns" ofType="com.libambu.dataagent.entity.dataset.DbColumn" notNullColumn="c_id">
+            <id property="id" column="c_id" javaType="java.util.UUID"/>
+            <result property="name" column="c_name"/>
+            <result property="type" column="c_type"/>
+            <result property="description" column="c_description"/>
+            <result property="primaryKey" column="c_is_primary_key"/>
+            <result property="tableId" column="c_table_id" javaType="java.util.UUID"/>
+        </collection>
+    </resultMap>
+
     <insert id="insert">
         INSERT INTO db_table (id, name, description, database_id)
         VALUES (#{id}, #{name}, #{description}, #{databaseId})
@@ -41,6 +56,47 @@
         SELECT id, name, description, database_id
         FROM db_table
         WHERE database_id = #{databaseId}
+    </select>
+
+    <select id="findByIdsWithColumns" resultMap="DbTableWithColumnsMap">
+        SELECT t.id             AS id,
+               t.name           AS name,
+               t.description    AS description,
+               t.database_id    AS database_id,
+               c.id             AS c_id,
+               c.name           AS c_name,
+               c.type           AS c_type,
+               c.description    AS c_description,
+               c.is_primary_key AS c_is_primary_key,
+               c.table_id       AS c_table_id
+        FROM db_table t
+        LEFT JOIN db_column c ON c.table_id = t.id
+        WHERE t.id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+        ORDER BY t.name, c.name
+    </select>
+
+    <select id="findByDatabaseIdAndNames" resultMap="DbTableWithColumnsMap">
+        SELECT t.id             AS id,
+               t.name           AS name,
+               t.description    AS description,
+               t.database_id    AS database_id,
+               c.id             AS c_id,
+               c.name           AS c_name,
+               c.type           AS c_type,
+               c.description    AS c_description,
+               c.is_primary_key AS c_is_primary_key,
+               c.table_id       AS c_table_id
+        FROM db_table t
+        LEFT JOIN db_column c ON c.table_id = t.id
+        WHERE t.database_id = #{databaseId}
+          AND t.name IN
+        <foreach collection="names" item="name" open="(" separator="," close=")">
+            #{name}
+        </foreach>
+        ORDER BY t.name, c.name
     </select>
 
     <select id="findById" resultMap="DbTableMap">

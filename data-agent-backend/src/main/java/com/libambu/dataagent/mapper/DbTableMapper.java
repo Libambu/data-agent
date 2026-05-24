@@ -28,5 +28,10 @@ public interface DbTableMapper {
 
     List<DbTable> findByDatabaseId(@Param("databaseId") String databaseId);
 
+    List<DbTable> findByIdsWithColumns(@Param("ids") List<UUID> ids);
+
+    List<DbTable> findByDatabaseIdAndNames(@Param("databaseId") String databaseId,
+                                           @Param("names") List<String> names);
+
     DbTable findById(@Param("id") UUID id);
 }

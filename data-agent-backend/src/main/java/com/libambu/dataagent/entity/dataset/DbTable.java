@@ -5,6 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -22,4 +23,5 @@ public class DbTable {
     private String name;
     private String description;
     private String databaseId;
+    private List<DbColumn> columns;
 }
