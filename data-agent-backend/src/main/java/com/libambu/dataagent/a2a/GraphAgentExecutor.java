@@ -1,43 +1,54 @@
 package com.libambu.dataagent.a2a;
 
+import com.alibaba.cloud.ai.graph.CompiledGraph;
 import com.alibaba.cloud.ai.graph.NodeOutput;
+import com.alibaba.cloud.ai.graph.CompileConfig;
+import com.alibaba.cloud.ai.graph.RunnableConfig;
 import com.alibaba.cloud.ai.graph.StateGraph;
+import com.alibaba.cloud.ai.graph.checkpoint.config.SaverConfig;
+import com.alibaba.cloud.ai.graph.checkpoint.savers.MemorySaver;
+import com.alibaba.cloud.ai.graph.state.StateSnapshot;
 import com.alibaba.cloud.ai.graph.streaming.OutputType;
 import com.alibaba.cloud.ai.graph.streaming.StreamingOutput;
 import com.libambu.dataagent.entity.constant.DataAgentSpec;
 import io.a2a.server.agentexecution.AgentExecutor;
 import io.a2a.server.agentexecution.RequestContext;
 import io.a2a.server.events.EventQueue;
+import io.a2a.server.tasks.TaskStore;
 import io.a2a.server.tasks.TaskUpdater;
 import io.a2a.spec.DataPart;
 import io.a2a.spec.Message;
 import io.a2a.spec.Part;
-import io.a2a.spec.TextPart;
 import io.a2a.spec.Task;
+import io.a2a.spec.TaskState;
+import io.a2a.spec.TaskStatus;
+import io.a2a.spec.TextPart;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collectors;
 
 /**
  * A2A Agent 执行器：把用户消息交给 Spring AI Alibaba Graph 执行，
  * 再把 Graph 的 NodeOutput 转换成 A2A Artifact 返回给客户端。
  * <p>
- * 对齐 kt 版本 {@code GraphAgentExecutor}，仅做最小可运行编排，
- * 不再处理多场景路由 / 中断恢复等 Toy 流程。
+ * 对齐 kt 版本 {@code GraphAgentExecutor}，支持中断/恢复（人工审核）流程。
  */
 @Slf4j
 @Component
 public class GraphAgentExecutor implements AgentExecutor {
 
     private final StateGraph stateGraph;
+    private final TaskStore taskStore;
+    private final MemorySaver saver = new MemorySaver();
 
-    public GraphAgentExecutor(StateGraph stateGraph) {
+    public GraphAgentExecutor(StateGraph stateGraph, TaskStore taskStore) {
         this.stateGraph = stateGraph;
+        this.taskStore = taskStore;
     }
 
     @Override
@@ -45,19 +56,64 @@ public class GraphAgentExecutor implements AgentExecutor {
         TaskUpdater taskUpdater = new TaskUpdater(context, eventQueue);
         AtomicInteger artifactNum = new AtomicInteger();
 
+        CompiledGraph compiledGraph;
+        try {
+            compiledGraph = stateGraph.compile(
+                    CompileConfig.builder()
+                            .saverConfig(SaverConfig.builder().register(saver).build())
+                            .interruptBefore(DataAgentSpec.Graph.Node.INTERRUPT_NODE)
+                            .build()
+            );
+        } catch (Exception e) {
+            log.error("GraphAgentExecutor compile error", e);
+            taskUpdater.fail();
+            return;
+        }
+
         Message message = context.getMessage();
+
+        // 检查是否是恢复已有任务（人工审核反馈）
+        String taskId = message.getTaskId();
+        Task existingTask = (taskId != null) ? taskStore.get(taskId) : null;
+
+        if (existingTask != null) {
+            // 恢复已有任务：从消息元数据中获取审核结果
+            RunnableConfig runnableConfig = RunnableConfig.builder().threadId(existingTask.getId()).build();
+            Map<String, Object> metadata = message.getMetadata();
+            Object approved = metadata != null ? metadata.get(DataAgentSpec.MessageMetadataKey.CONFIRMATION_APPROVED) : null;
+            Object feedback = metadata != null ? metadata.get(DataAgentSpec.MessageMetadataKey.CONFIRMATION_FEEDBACK) : null;
+
+            Map<String, Object> updateState = new HashMap<>();
+            updateState.put(DataAgentSpec.Graph.StateKey.HumanReview.CONFIRMATION_APPROVED, approved);
+            updateState.put(DataAgentSpec.Graph.StateKey.HumanReview.CONFIRMATION_FEEDBACK, feedback);
+
+            try {
+                RunnableConfig resumedConfig = compiledGraph.updateState(runnableConfig, updateState);
+                compiledGraph.stream(null, resumedConfig)
+                        .doOnNext(nodeOutput -> handleNodeOutput(nodeOutput, taskUpdater, artifactNum))
+                        .doOnComplete(() -> onComplete(compiledGraph, taskUpdater, runnableConfig))
+                        .blockLast();
+            } catch (Exception e) {
+                log.error("GraphAgentExecutor resume error", e);
+                taskUpdater.fail();
+            }
+            return;
+        }
+
+        // 新任务：创建 Task 并开始执行
+        Task newTask = newTask(message);
+        eventQueue.enqueueEvent(newTask);
+
         TextPart textPart = (TextPart) message.getParts().stream()
                 .filter(p -> p instanceof TextPart)
                 .findFirst()
                 .orElseThrow();
         String input = textPart.getText();
 
+        RunnableConfig runnableConfig = RunnableConfig.builder().threadId(newTask.getId()).build();
+
         Map<String, Object> initialState = new HashMap<>();
         initialState.put(DataAgentSpec.Graph.StateKey.Input.USER_INPUT, input);
-        initialState.put(
-                DataAgentSpec.Graph.StateKey.Input.MULTI_TURN_CONTEXT,
-                buildMultiTurnContext(context, message)
-        );
         Map<String, Object> metadata = message.getMetadata();
         if (metadata != null) {
             initialState.put(
@@ -67,10 +123,9 @@ public class GraphAgentExecutor implements AgentExecutor {
         }
 
         try {
-            stateGraph.compile()
-                    .stream(initialState)
+            compiledGraph.stream(initialState, runnableConfig)
                     .doOnNext(nodeOutput -> handleNodeOutput(nodeOutput, taskUpdater, artifactNum))
-                    .doOnComplete(taskUpdater::complete)
+                    .doOnComplete(() -> onComplete(compiledGraph, taskUpdater, runnableConfig))
                     .blockLast();
         } catch (Exception e) {
             log.error("GraphAgentExecutor execute error", e);
@@ -81,6 +136,31 @@ public class GraphAgentExecutor implements AgentExecutor {
     @Override
     public void cancel(RequestContext context, EventQueue eventQueue) {
         // 暂未实现
+    }
+
+    /**
+     * 图执行完成后检查是否在中断节点暂停，如果是则通知客户端需要输入。
+     */
+    private void onComplete(CompiledGraph compiledGraph, TaskUpdater taskUpdater, RunnableConfig runnableConfig) {
+        StateSnapshot stateSnapshot = compiledGraph.getState(runnableConfig);
+        if (DataAgentSpec.Graph.Node.INTERRUPT_NODE.equals(stateSnapshot.next())) {
+            taskUpdater.requiresInput();
+        }
+    }
+
+    /**
+     * 创建新的 Task 对象。
+     */
+    private Task newTask(Message message) {
+        String contextId = message.getContextId();
+        if (contextId == null || contextId.isEmpty()) {
+            contextId = UUID.randomUUID().toString();
+        }
+        String id = UUID.randomUUID().toString();
+        if (message.getTaskId() != null && !message.getTaskId().isEmpty()) {
+            id = message.getTaskId();
+        }
+        return new Task(id, contextId, new TaskStatus(TaskState.SUBMITTED), null, List.of(message), null);
     }
 
     /**
@@ -130,55 +210,5 @@ public class GraphAgentExecutor implements AgentExecutor {
             return text;
         }
         return null;
-    }
-
-    private String buildMultiTurnContext(RequestContext context, Message currentMessage) {
-        Task task = context.getTask();
-        if (task == null || task.getHistory() == null || task.getHistory().isEmpty()) {
-            return "(无)";
-        }
-
-        String currentMessageId = currentMessage == null ? null : currentMessage.getMessageId();
-        List<String> historyLines = task.getHistory().stream()
-                .filter(message -> message != null)
-                .filter(message -> currentMessageId == null || !currentMessageId.equals(message.getMessageId()))
-                .map(this::formatHistoryMessage)
-                .filter(line -> !line.isBlank())
-                .toList();
-
-        if (historyLines.isEmpty()) {
-            return "(无)";
-        }
-        return String.join("\n", historyLines);
-    }
-
-    private String formatHistoryMessage(Message message) {
-        String content = extractText(message);
-        if (content.isBlank()) {
-            return "";
-        }
-        return roleLabel(message) + ": " + content;
-    }
-
-    private String extractText(Message message) {
-        if (message == null || message.getParts() == null) {
-            return "";
-        }
-        return message.getParts().stream()
-                .filter(part -> part instanceof TextPart)
-                .map(part -> ((TextPart) part).getText())
-                .filter(text -> text != null && !text.isBlank())
-                .collect(Collectors.joining("\n"))
-                .trim();
-    }
-
-    private String roleLabel(Message message) {
-        if (message == null || message.getRole() == null) {
-            return "未知";
-        }
-        return switch (message.getRole()) {
-            case USER -> "用户";
-            case AGENT -> "AI";
-        };
     }
 }
