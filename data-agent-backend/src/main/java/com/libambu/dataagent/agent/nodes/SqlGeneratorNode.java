@@ -59,6 +59,8 @@ public class SqlGeneratorNode implements NodeAction {
 
         String sqlPrompt = promptManager.getNewSqlGeneratorPromptTemplate().render(vars);
 
+        log.info("[SqlGeneratorNode] SQL 生成提示词: {}", sqlPrompt);
+
         String sql = deepseekClient
                 .prompt()
                 .options(OpenAiChatOptions.builder()

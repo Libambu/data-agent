@@ -56,8 +56,8 @@ public class ChatClientConfig {
                 //拦截器模式，增强ai能力
                 //.defaultAdvisors(MessageChatMemoryAdvisor.builder(chatMemory).build())
                 .defaultAdvisors(
-                    new MySimpleLoggerAdvisor(),
-                    MessageChatMemoryAdvisor.builder(chatMemory).build()
+                    new MySimpleLoggerAdvisor()
+                    //MessageChatMemoryAdvisor.builder(chatMemory).build()
                     //qaAdvisor//简单的RAG检索
                 ) //添加自定义的日志记录advisor
                 .build(); 

@@ -26,7 +26,7 @@ spring:
       chat:
         options:
           # 默认聊天模型，给 ChatModel / ChatClient 使用
-          model: qwen3.6-plus
+          model: deepseek-v4-pro
 
       # 向量模型配置
       embedding:
