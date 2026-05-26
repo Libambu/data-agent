@@ -7,12 +7,15 @@ import com.alibaba.cloud.ai.graph.action.AsyncEdgeAction;
 import com.alibaba.cloud.ai.graph.action.AsyncNodeAction;
 import com.libambu.dataagent.agent.edges.FeasibilityAssessmentEdge;
 import com.libambu.dataagent.agent.edges.HumanFeedbackEdge;
+import com.libambu.dataagent.agent.edges.PlanExecutorEdge;
 import com.libambu.dataagent.agent.nodes.EvidenceRecallNode;
 import com.libambu.dataagent.agent.nodes.FeasibilityAssessmentNode;
 import com.libambu.dataagent.agent.nodes.HumanFeedbackNode;
 import com.libambu.dataagent.agent.nodes.PlanExecuteNode;
 import com.libambu.dataagent.agent.nodes.PlannerNode;
 import com.libambu.dataagent.agent.nodes.SchemeReCallNode;
+import com.libambu.dataagent.agent.nodes.SqlExecuteNode;
+import com.libambu.dataagent.agent.nodes.SqlGeneratorNode;
 import com.libambu.dataagent.agent.nodes.TableRelationNode;
 import com.libambu.dataagent.entity.constant.DataAgentSpec;
 import org.springframework.context.annotation.Bean;
@@ -30,9 +33,10 @@ public class GraphConfiguration {
     /**
      * 数据 Agent 主链路 Graph：
      * START -> EVIDENCE_RECALL_NODE -> SCHEME_RECALL_NODE -> TABLE_RELATION_NODE
-     *       -> FEASIBILITY_ASSESSMENT_NODE -> PLANNER_NODE -> HUMAN_FEEDBACK_NODE -> PLAN_EXECUTE_NODE / END
+     *       -> FEASIBILITY_ASSESSMENT_NODE -> PLANNER_NODE -> HUMAN_FEEDBACK_NODE
+     *       -> PLAN_EXECUTE_NODE -> (conditional) -> SQL_GENERATE_NODE -> SQL_EXECUTE_NODE -> END
      * <p>
-     * 对齐 kt 版的召回、可行性评估、任务拆解、人工审核与计划执行编排。
+     * 对齐 kt 版的召回、可行性评估、任务拆解、人工审核、计划执行与 SQL 生成/执行编排。
      */
     @Bean
     public StateGraph dataAgentMainGraph(EvidenceRecallNode evidenceRecallNode,
@@ -41,7 +45,9 @@ public class GraphConfiguration {
                                          FeasibilityAssessmentNode feasibilityAssessmentNode,
                                          PlannerNode plannerNode,
                                          HumanFeedbackNode humanFeedbackNode,
-                                         PlanExecuteNode planExecuteNode) throws Exception {
+                                         PlanExecuteNode planExecuteNode,
+                                         SqlGeneratorNode sqlGeneratorNode,
+                                         SqlExecuteNode sqlExecuteNode) throws Exception {
         KeyStrategyFactory keyStrategyFactory = () -> {
             Map<String, KeyStrategy> map = new HashMap<>();
             // ===== 入参阶段：用户原始输入与会话上下文 =====
@@ -68,8 +74,10 @@ public class GraphConfiguration {
             map.put(DataAgentSpec.Graph.StateKey.HumanReview.CONFIRMATION_FEEDBACK, KeyStrategy.REPLACE); // 用户拒绝时给出的反馈意见，用于 Planner 重规划
             map.put(DataAgentSpec.Graph.StateKey.HumanReview.NEXT_NODE, KeyStrategy.REPLACE);            // 审核后由条件边读取的下一节点（PLAN_EXECUTION/PLANNER/END）
 
-            // ===== 执行阶段：可行性评估等执行类节点的结果 =====
-            map.put(DataAgentSpec.Graph.StateKey.Execution.FEASIBILITY_RESULT, KeyStrategy.REPLACE); // 可行性评估节点的输出结果
+            // ===== 执行阶段：可行性评估、SQL 生成/执行等节点的结果 =====
+            map.put(DataAgentSpec.Graph.StateKey.Execution.FEASIBILITY_RESULT, KeyStrategy.REPLACE);      // 可行性评估节点的输出结果
+            map.put(DataAgentSpec.Graph.StateKey.Execution.SQL_GENERATION_RESULT, KeyStrategy.REPLACE);   // SQL 生成节点的产出
+            map.put(DataAgentSpec.Graph.StateKey.Execution.SQL_EXECUTION_RESULT, KeyStrategy.REPLACE);    // SQL 执行节点的产出
             return map;
         };
 
@@ -81,6 +89,8 @@ public class GraphConfiguration {
                 .addNode(DataAgentSpec.Graph.Node.PLANNER, AsyncNodeAction.node_async(plannerNode))
                 .addNode(DataAgentSpec.Graph.Node.HUMAN_FEEDBACK, AsyncNodeAction.node_async(humanFeedbackNode))
                 .addNode(DataAgentSpec.Graph.Node.PLAN_EXECUTION, AsyncNodeAction.node_async(planExecuteNode))
+                .addNode(DataAgentSpec.Graph.Node.SQL_GENERATION, AsyncNodeAction.node_async(sqlGeneratorNode))
+                .addNode(DataAgentSpec.Graph.Node.SQL_EXECUTION, AsyncNodeAction.node_async(sqlExecuteNode))
                 .addEdge(StateGraph.START, DataAgentSpec.Graph.Node.EVIDENCE_RECALL)
                 .addEdge(DataAgentSpec.Graph.Node.EVIDENCE_RECALL, DataAgentSpec.Graph.Node.SCHEMA_RECALL)
                 .addEdge(DataAgentSpec.Graph.Node.SCHEMA_RECALL, DataAgentSpec.Graph.Node.TABLE_RELATION)
@@ -103,6 +113,15 @@ public class GraphConfiguration {
                                 DataAgentSpec.Graph.Node.PLANNER, DataAgentSpec.Graph.Node.PLANNER
                         )
                 )
-                .addEdge(DataAgentSpec.Graph.Node.PLAN_EXECUTION, StateGraph.END);
+                .addConditionalEdges(
+                        DataAgentSpec.Graph.Node.PLAN_EXECUTION,
+                        AsyncEdgeAction.edge_async(new PlanExecutorEdge()),
+                        Map.of(
+                                DataAgentSpec.Graph.Node.SQL_GENERATION, DataAgentSpec.Graph.Node.SQL_GENERATION,
+                                StateGraph.END, StateGraph.END
+                        )
+                )
+                .addEdge(DataAgentSpec.Graph.Node.SQL_GENERATION, DataAgentSpec.Graph.Node.SQL_EXECUTION)
+                .addEdge(DataAgentSpec.Graph.Node.SQL_EXECUTION, StateGraph.END);
     }
 }
