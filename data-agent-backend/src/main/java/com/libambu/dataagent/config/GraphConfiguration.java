@@ -13,6 +13,10 @@ import com.libambu.dataagent.agent.nodes.FeasibilityAssessmentNode;
 import com.libambu.dataagent.agent.nodes.HumanFeedbackNode;
 import com.libambu.dataagent.agent.nodes.PlanExecuteNode;
 import com.libambu.dataagent.agent.nodes.PlannerNode;
+import com.libambu.dataagent.agent.nodes.PythonAnalyzeNode;
+import com.libambu.dataagent.agent.nodes.PythonExecuteNode;
+import com.libambu.dataagent.agent.nodes.PythonGeneratorNode;
+import com.libambu.dataagent.agent.nodes.ReportGeneratorNode;
 import com.libambu.dataagent.agent.nodes.SchemeReCallNode;
 import com.libambu.dataagent.agent.nodes.SqlExecuteNode;
 import com.libambu.dataagent.agent.nodes.SqlGeneratorNode;
@@ -34,9 +38,11 @@ public class GraphConfiguration {
      * 数据 Agent 主链路 Graph：
      * START -> EVIDENCE_RECALL_NODE -> SCHEME_RECALL_NODE -> TABLE_RELATION_NODE
      *       -> FEASIBILITY_ASSESSMENT_NODE -> PLANNER_NODE -> HUMAN_FEEDBACK_NODE
-     *       -> PLAN_EXECUTE_NODE -> (conditional) -> SQL_GENERATE_NODE -> SQL_EXECUTE_NODE -> END
+     *       -> PLAN_EXECUTE_NODE -> (conditional) -> SQL_GENERATE_NODE -> SQL_EXECUTE_NODE -> PLAN_EXECUTE_NODE
+     *                                            -> PYTHON_GENERATE_NODE -> PYTHON_EXECUTE_NODE -> PYTHON_ANALYZE_NODE -> PLAN_EXECUTE_NODE
+     *                                            -> REPORT_GENERATOR_NODE -> END
      * <p>
-     * 对齐 kt 版的召回、可行性评估、任务拆解、人工审核、计划执行与 SQL 生成/执行编排。
+     * 对齐 kt 版的召回、可行性评估、任务拆解、人工审核、计划执行与 SQL/Python/Report 生成执行编排。
      */
     @Bean
     public StateGraph dataAgentMainGraph(EvidenceRecallNode evidenceRecallNode,
@@ -47,7 +53,11 @@ public class GraphConfiguration {
                                          HumanFeedbackNode humanFeedbackNode,
                                          PlanExecuteNode planExecuteNode,
                                          SqlGeneratorNode sqlGeneratorNode,
-                                         SqlExecuteNode sqlExecuteNode) throws Exception {
+                                         SqlExecuteNode sqlExecuteNode,
+                                         PythonGeneratorNode pythonGeneratorNode,
+                                         PythonExecuteNode pythonExecuteNode,
+                                         PythonAnalyzeNode pythonAnalyzeNode,
+                                         ReportGeneratorNode reportGeneratorNode) throws Exception {
         KeyStrategyFactory keyStrategyFactory = () -> {
             Map<String, KeyStrategy> map = new HashMap<>();
             // ===== 入参阶段：用户原始输入与会话上下文 =====
@@ -78,6 +88,9 @@ public class GraphConfiguration {
             map.put(DataAgentSpec.Graph.StateKey.Execution.FEASIBILITY_RESULT, KeyStrategy.REPLACE);      // 可行性评估节点的输出结果
             map.put(DataAgentSpec.Graph.StateKey.Execution.SQL_GENERATION_RESULT, KeyStrategy.REPLACE);   // SQL 生成节点的产出
             map.put(DataAgentSpec.Graph.StateKey.Execution.SQL_EXECUTION_RESULT, KeyStrategy.REPLACE);    // SQL 执行节点的产出
+            map.put(DataAgentSpec.Graph.StateKey.Execution.PYTHON_GENERATION_RESULT, KeyStrategy.REPLACE); // Python 代码生成节点的产出
+            map.put(DataAgentSpec.Graph.StateKey.Execution.PYTHON_EXECUTION_RESULT, KeyStrategy.REPLACE);  // Python 代码执行节点的产出
+            map.put(DataAgentSpec.Graph.StateKey.Execution.REPORT_RESULT, KeyStrategy.REPLACE);            // 报告生成节点的产出
             return map;
         };
 
@@ -91,6 +104,10 @@ public class GraphConfiguration {
                 .addNode(DataAgentSpec.Graph.Node.PLAN_EXECUTION, AsyncNodeAction.node_async(planExecuteNode))
                 .addNode(DataAgentSpec.Graph.Node.SQL_GENERATION, AsyncNodeAction.node_async(sqlGeneratorNode))
                 .addNode(DataAgentSpec.Graph.Node.SQL_EXECUTION, AsyncNodeAction.node_async(sqlExecuteNode))
+                .addNode(DataAgentSpec.Graph.Node.PYTHON_GENERATION, AsyncNodeAction.node_async(pythonGeneratorNode))
+                .addNode(DataAgentSpec.Graph.Node.PYTHON_EXECUTION, AsyncNodeAction.node_async(pythonExecuteNode))
+                .addNode(DataAgentSpec.Graph.Node.PYTHON_ANALYSIS, AsyncNodeAction.node_async(pythonAnalyzeNode))
+                .addNode(DataAgentSpec.Graph.Node.REPORT_GENERATION, AsyncNodeAction.node_async(reportGeneratorNode))
                 .addEdge(StateGraph.START, DataAgentSpec.Graph.Node.EVIDENCE_RECALL)
                 .addEdge(DataAgentSpec.Graph.Node.EVIDENCE_RECALL, DataAgentSpec.Graph.Node.SCHEMA_RECALL)
                 .addEdge(DataAgentSpec.Graph.Node.SCHEMA_RECALL, DataAgentSpec.Graph.Node.TABLE_RELATION)
@@ -118,10 +135,16 @@ public class GraphConfiguration {
                         AsyncEdgeAction.edge_async(new PlanExecutorEdge()),
                         Map.of(
                                 DataAgentSpec.Graph.Node.SQL_GENERATION, DataAgentSpec.Graph.Node.SQL_GENERATION,
+                                DataAgentSpec.Graph.Node.PYTHON_GENERATION, DataAgentSpec.Graph.Node.PYTHON_GENERATION,
+                                DataAgentSpec.Graph.Node.REPORT_GENERATION, DataAgentSpec.Graph.Node.REPORT_GENERATION,
                                 StateGraph.END, StateGraph.END
                         )
                 )
                 .addEdge(DataAgentSpec.Graph.Node.SQL_GENERATION, DataAgentSpec.Graph.Node.SQL_EXECUTION)
-                .addEdge(DataAgentSpec.Graph.Node.SQL_EXECUTION, StateGraph.END);
+                .addEdge(DataAgentSpec.Graph.Node.SQL_EXECUTION, DataAgentSpec.Graph.Node.PLAN_EXECUTION)
+                .addEdge(DataAgentSpec.Graph.Node.PYTHON_GENERATION, DataAgentSpec.Graph.Node.PYTHON_EXECUTION)
+                .addEdge(DataAgentSpec.Graph.Node.PYTHON_EXECUTION, DataAgentSpec.Graph.Node.PYTHON_ANALYSIS)
+                .addEdge(DataAgentSpec.Graph.Node.PYTHON_ANALYSIS, DataAgentSpec.Graph.Node.PLAN_EXECUTION)
+                .addEdge(DataAgentSpec.Graph.Node.REPORT_GENERATION, StateGraph.END);
     }
 }

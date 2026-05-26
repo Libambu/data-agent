@@ -61,8 +61,9 @@ public class SqlExecuteNode implements NodeAction {
         result.put(DataAgentSpec.Graph.StateKey.Planning.CURRENT_STEP, currentStep + 1);
         result.put(DataAgentSpec.Graph.StateKey.Execution.SQL_EXECUTION_RESULT,
                 new SqlExecuteResult(resultSetWrapper, displaySpec));
-        result.put(DataAgentSpec.Graph.StateKey.Planning.EXECUTION_OUTPUT,
-                Map.of("step_" + currentStep, objectMapper.writeValueAsString(resultSetWrapper)));
+        Map<String, String> executionOutput = new HashMap<>();
+        executionOutput.put("step_" + currentStep, objectMapper.writeValueAsString(resultSetWrapper));
+        result.put(DataAgentSpec.Graph.StateKey.Planning.EXECUTION_OUTPUT, executionOutput);
         return result;
     }
 
