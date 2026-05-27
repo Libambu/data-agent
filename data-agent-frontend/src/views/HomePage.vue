@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, onMounted, onBeforeUnmount, nextTick, computed } from 'vue'
 
 const router = useRouter()
 
@@ -9,11 +9,6 @@ const goToWorkspace = () => {
 }
 
 const isVisible = ref(false)
-onMounted(() => {
-  nextTick(() => {
-    isVisible.value = true
-  })
-})
 
 // 4 个阶段亮点（对应 SVG 图）
 const phases = [
@@ -22,6 +17,77 @@ const phases = [
   { key: 'III', name: 'Execution', label: '双引擎执行', color: 'amber', desc: 'SQL / Python / Report 多分支调度' },
   { key: 'IV', name: 'Output', label: '报告输出', color: 'emerald', desc: '自动生成 Markdown 分析报告' },
 ]
+
+// ========== DAG 活体演示：按真实工作流顺序激活节点 / 边 ==========
+// step: { node, edges, phase, label } —— 每一步都对应一个被点亮的节点 + 进入它的边
+type WalkStep = {
+  node: string
+  edges: string[]
+  phase: 'I' | 'II' | 'III' | 'IV'
+  label: string
+}
+
+const walk: WalkStep[] = [
+  { node: 'n-start',     edges: [],                                phase: 'I',   label: 'Start' },
+  { node: 'n-evidence',  edges: ['e-s-evidence'],                  phase: 'I',   label: 'Evidence Recall' },
+  { node: 'n-schema',    edges: ['e-evidence-schema'],             phase: 'I',   label: 'Schema Recall' },
+  { node: 'n-relation',  edges: ['e-schema-relation'],             phase: 'I',   label: 'Table Relation' },
+  { node: 'n-feasible',  edges: ['e-relation-feasible'],           phase: 'II',  label: 'Feasibility' },
+  { node: 'n-planner',   edges: ['e-feasible-planner'],            phase: 'II',  label: 'Planner' },
+  { node: 'n-human',     edges: ['e-planner-human'],               phase: 'II',  label: 'Human-in-Loop' },
+  { node: 'n-dispatch',  edges: ['e-human-dispatch'],              phase: 'III', label: 'Dispatch' },
+  { node: 'n-sqlgen',    edges: ['e-dispatch-sqlgen'],             phase: 'III', label: 'SQL Gen' },
+  { node: 'n-sqlexec',   edges: ['e-sqlgen-sqlexec'],              phase: 'III', label: 'SQL Exec' },
+  { node: 'n-pygen',     edges: ['e-dispatch-pygen'],              phase: 'III', label: 'Python Gen' },
+  { node: 'n-pyexec',    edges: ['e-pygen-pyexec'],                phase: 'III', label: 'Python Exec' },
+  { node: 'n-report',    edges: ['e-dispatch-report'],             phase: 'III', label: 'Report Gen' },
+  { node: 'n-end',       edges: ['e-report-end'],                  phase: 'IV',  label: 'Done' },
+]
+
+const stepIndex = ref(0)
+const activeNode = computed(() => walk[stepIndex.value]!.node)
+const activeEdges = computed(() => walk[stepIndex.value]!.edges)
+const activePhase = computed(() => walk[stepIndex.value]!.phase)
+const activeLabel = computed(() => walk[stepIndex.value]!.label)
+
+// 已经走过的节点（用于轻量描色，区分 "running" / "visited" / "idle"）
+const visitedNodes = computed(() => {
+  const set = new Set<string>()
+  for (let i = 0; i < stepIndex.value; i++) set.add(walk[i]!.node)
+  return set
+})
+
+const nodeState = (id: string) => {
+  if (id === activeNode.value) return 'running'
+  if (visitedNodes.value.has(id)) return 'visited'
+  return 'idle'
+}
+const edgeState = (id: string) => (activeEdges.value.includes(id) ? 'running' : 'idle')
+
+let timer: number | null = null
+const startWalker = () => {
+  if (timer) return
+  timer = window.setInterval(() => {
+    stepIndex.value = (stepIndex.value + 1) % walk.length
+  }, 1100)
+}
+const stopWalker = () => {
+  if (timer) {
+    clearInterval(timer)
+    timer = null
+  }
+}
+
+onMounted(() => {
+  nextTick(() => {
+    isVisible.value = true
+  })
+  startWalker()
+})
+
+onBeforeUnmount(() => {
+  stopWalker()
+})
 </script>
 
 <template>
@@ -57,8 +123,8 @@ const phases = [
         </div>
 
         <h1 class="hero__title">
-          <span class="hero__title-line">Turn Questions</span>
-          <span class="hero__title-line hero__title-line--gradient">into Data Stories.</span>
+          <span class="hero__title-line">Multi-Agent Analytics,</span>
+          <span class="hero__title-line hero__title-line--gradient">End-to-End Automated.</span>
         </h1>
 
         <p class="hero__lead">
@@ -129,7 +195,10 @@ const phases = [
       <aside class="arch-pane">
         <div class="arch-pane__head">
           <div class="arch-pane__head-l">
-            <span class="arch-pane__badge">LIVE&nbsp;WORKFLOW&nbsp;MAP</span>
+            <span class="arch-pane__badge arch-pane__badge--live">
+              <span class="arch-pane__badge-dot"></span>
+              LIVE&nbsp;WORKFLOW&nbsp;MAP
+            </span>
             <h2 class="arch-pane__title">System DAG</h2>
           </div>
           <div class="arch-pane__dots">
@@ -137,9 +206,17 @@ const phases = [
           </div>
         </div>
 
-        <p class="arch-pane__caption">
-          DAG of Data Agent — Retrieval / Planning / Execution / Output.
-        </p>
+        <div class="arch-pane__status">
+          <span class="status-line">
+            <span class="status-line__pulse"></span>
+            <span class="status-line__phase">PHASE&nbsp;{{ activePhase }}</span>
+            <span class="status-line__sep">›</span>
+            <span class="status-line__label">{{ activeLabel }}</span>
+          </span>
+          <span class="status-line__progress">
+            {{ String(stepIndex + 1).padStart(2, '0') }} / {{ String(walk.length).padStart(2, '0') }}
+          </span>
+        </div>
 
         <div class="arch-graph">
           <svg viewBox="0 0 520 680" class="arch-svg" preserveAspectRatio="xMidYMid meet">
@@ -152,6 +229,9 @@ const phases = [
               </marker>
               <marker id="arr-l" markerWidth="5" markerHeight="4" refX="5" refY="2" orient="auto">
                 <polygon points="0 0, 5 2, 0 4" fill="#bdc1c6" />
+              </marker>
+              <marker id="arr-live" markerWidth="7" markerHeight="6" refX="7" refY="3" orient="auto">
+                <polygon points="0 0, 7 3, 0 6" fill="#1a73e8" />
               </marker>
               <linearGradient id="grad-recall" x1="0" y1="0" x2="1" y2="1">
                 <stop offset="0" stop-color="#1a73e8" stop-opacity="0.10" />
@@ -169,82 +249,62 @@ const phases = [
                 <stop offset="0" stop-color="#d96570" stop-opacity="0.12" />
                 <stop offset="1" stop-color="#d96570" stop-opacity="0.03" />
               </linearGradient>
+              <radialGradient id="glow-blue" cx="0.5" cy="0.5" r="0.5">
+                <stop offset="0" stop-color="#1a73e8" stop-opacity="0.55" />
+                <stop offset="1" stop-color="#1a73e8" stop-opacity="0" />
+              </radialGradient>
+              <filter id="f-glow" x="-40%" y="-40%" width="180%" height="180%">
+                <feGaussianBlur stdDeviation="2.4" result="blur" />
+                <feMerge>
+                  <feMergeNode in="blur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
             </defs>
 
             <!-- Phase 分组背景 -->
-            <rect x="155" y="18" width="210" height="175" rx="14" class="phase-rect" fill="url(#grad-recall)" stroke="#1a73e8" />
+            <rect x="155" y="18" width="210" height="175" rx="14"
+              class="phase-rect" :class="{ 'phase-rect--active': activePhase === 'I' }"
+              fill="url(#grad-recall)" stroke="#1a73e8" />
             <text x="260" y="38" class="phase-label phase-label--recall">PHASE I · RETRIEVAL</text>
 
-            <rect x="155" y="208" width="210" height="162" rx="14" class="phase-rect" fill="url(#grad-plan)" stroke="#9b72cb" />
+            <rect x="155" y="208" width="210" height="162" rx="14"
+              class="phase-rect" :class="{ 'phase-rect--active': activePhase === 'II' }"
+              fill="url(#grad-plan)" stroke="#9b72cb" />
             <text x="260" y="228" class="phase-label phase-label--plan">PHASE II · PLANNING</text>
 
-            <rect x="55" y="385" width="410" height="175" rx="14" class="phase-rect" fill="url(#grad-exec)" stroke="#f9ab00" />
+            <rect x="55" y="385" width="410" height="175" rx="14"
+              class="phase-rect" :class="{ 'phase-rect--active': activePhase === 'III' }"
+              fill="url(#grad-exec)" stroke="#f9ab00" />
             <text x="260" y="405" class="phase-label phase-label--exec">PHASE III · EXECUTION</text>
 
-            <rect x="355" y="575" width="110" height="50" rx="14" class="phase-rect" fill="url(#grad-out)" stroke="#d96570" />
+            <rect x="355" y="575" width="110" height="50" rx="14"
+              class="phase-rect" :class="{ 'phase-rect--active': activePhase === 'IV' }"
+              fill="url(#grad-out)" stroke="#d96570" />
             <text x="410" y="592" class="phase-label phase-label--out">PHASE IV</text>
 
-            <!-- ===== Phase I 节点 ===== -->
-            <circle cx="260" cy="55" r="11" class="node-terminal" />
-            <text x="260" y="59" class="label-terminal">S</text>
+            <!-- ===== 连线（先画，节点后画以便置顶） ===== -->
+            <line id="e-s-evidence" x1="260" y1="66" x2="260" y2="78"
+              class="edge" :class="`edge--${edgeState('e-s-evidence')}`" marker-end="url(#arr)" />
+            <line id="e-evidence-schema" x1="260" y1="104" x2="260" y2="116"
+              class="edge" :class="`edge--${edgeState('e-evidence-schema')}`" marker-end="url(#arr)" />
+            <line id="e-schema-relation" x1="260" y1="142" x2="260" y2="154"
+              class="edge" :class="`edge--${edgeState('e-schema-relation')}`" marker-end="url(#arr)" />
+            <line id="e-relation-feasible" x1="260" y1="180" x2="260" y2="230"
+              class="edge" :class="`edge--${edgeState('e-relation-feasible')}`" marker-end="url(#arr)" />
 
-            <rect x="205" y="78" width="110" height="26" rx="8" class="node-box node-box--recall" />
-            <text x="260" y="95" class="label-node">Evidence Recall</text>
-
-            <rect x="205" y="116" width="110" height="26" rx="8" class="node-box node-box--recall" />
-            <text x="260" y="133" class="label-node">Schema Recall</text>
-
-            <rect x="205" y="154" width="110" height="26" rx="8" class="node-box node-box--recall" />
-            <text x="260" y="171" class="label-node">Table Relation</text>
-
-            <!-- ===== Phase II 节点 ===== -->
-            <polygon points="260,230 295,248 260,266 225,248" class="node-decision node-decision--plan" />
-            <text x="260" y="252" class="label-decision">Feasibility</text>
-
-            <rect x="205" y="286" width="110" height="26" rx="8" class="node-box node-box--plan" />
-            <text x="260" y="303" class="label-node">Planner</text>
-
-            <polygon points="260,332 295,350 260,368 225,350" class="node-decision node-decision--plan" />
-            <text x="260" y="354" class="label-decision">Human</text>
-
-            <!-- ===== Phase III 节点 ===== -->
-            <polygon points="260,415 295,433 260,451 225,433" class="node-decision node-decision--exec" />
-            <text x="260" y="437" class="label-decision">Dispatch</text>
-
-            <rect x="70" y="475" width="90" height="26" rx="8" class="node-box node-box--exec" />
-            <text x="115" y="492" class="label-node">SQL Gen</text>
-
-            <rect x="70" y="515" width="90" height="26" rx="8" class="node-box node-box--exec" />
-            <text x="115" y="532" class="label-node">SQL Exec</text>
-
-            <rect x="215" y="475" width="90" height="26" rx="8" class="node-box node-box--exec" />
-            <text x="260" y="492" class="label-node">Python Gen</text>
-
-            <rect x="215" y="515" width="90" height="26" rx="8" class="node-box node-box--exec" />
-            <text x="260" y="532" class="label-node">Python Exec</text>
-
-            <rect x="360" y="475" width="90" height="26" rx="8" class="node-box node-box--out" />
-            <text x="405" y="492" class="label-node">Report Gen</text>
-
-            <!-- ===== Phase IV ===== -->
-            <circle cx="410" cy="600" r="11" class="node-terminal node-terminal--end" />
-            <text x="410" y="604" class="label-terminal">E</text>
-
-            <!-- ===== 连线 ===== -->
-            <line x1="260" y1="66" x2="260" y2="78" class="edge" marker-end="url(#arr)" />
-            <line x1="260" y1="104" x2="260" y2="116" class="edge" marker-end="url(#arr)" />
-            <line x1="260" y1="142" x2="260" y2="154" class="edge" marker-end="url(#arr)" />
-            <line x1="260" y1="180" x2="260" y2="230" class="edge" marker-end="url(#arr)" />
-
-            <line x1="260" y1="266" x2="260" y2="286" class="edge-cond" marker-end="url(#arr-c)" />
+            <line id="e-feasible-planner" x1="260" y1="266" x2="260" y2="286"
+              class="edge-cond" :class="`edge-cond--${edgeState('e-feasible-planner')}`" marker-end="url(#arr-c)" />
             <text x="266" y="280" class="label-edge">yes</text>
 
             <path d="M 295 248 L 480 248 L 480 600 L 421 600" class="edge-cond" marker-end="url(#arr-c)" />
             <text x="484" y="320" class="label-edge">no</text>
 
-            <line x1="260" y1="312" x2="260" y2="332" class="edge" marker-end="url(#arr)" />
+            <line id="e-planner-human" x1="260" y1="312" x2="260" y2="332"
+              class="edge" :class="`edge--${edgeState('e-planner-human')}`" marker-end="url(#arr)" />
 
-            <line x1="260" y1="368" x2="260" y2="415" class="edge-cond" marker-end="url(#arr-c)" />
+            <line id="e-human-dispatch" x1="260" y1="368" x2="260" y2="415"
+              class="edge-cond" :class="`edge-cond--${edgeState('e-human-dispatch')}`" marker-end="url(#arr-c)" />
             <text x="266" y="395" class="label-edge">ok</text>
 
             <path d="M 225 350 L 190 350 L 190 299 L 205 299" class="edge-cond" marker-end="url(#arr-c)" />
@@ -253,22 +313,116 @@ const phases = [
             <path d="M 295 350 L 470 350 L 470 600 L 421 600" class="edge-cond" marker-end="url(#arr-c)" />
             <text x="474" y="420" class="label-edge">cancel</text>
 
-            <path d="M 225 433 L 115 433 L 115 475" class="edge-cond" marker-end="url(#arr-c)" />
+            <path id="e-dispatch-sqlgen" d="M 225 433 L 115 433 L 115 475"
+              class="edge-cond" :class="`edge-cond--${edgeState('e-dispatch-sqlgen')}`" marker-end="url(#arr-c)" />
             <text x="148" y="428" class="label-edge">sql</text>
 
-            <line x1="260" y1="451" x2="260" y2="475" class="edge-cond" marker-end="url(#arr-c)" />
+            <line id="e-dispatch-pygen" x1="260" y1="451" x2="260" y2="475"
+              class="edge-cond" :class="`edge-cond--${edgeState('e-dispatch-pygen')}`" marker-end="url(#arr-c)" />
             <text x="266" y="467" class="label-edge">py</text>
 
-            <path d="M 295 433 L 405 433 L 405 475" class="edge-cond" marker-end="url(#arr-c)" />
+            <path id="e-dispatch-report" d="M 295 433 L 405 433 L 405 475"
+              class="edge-cond" :class="`edge-cond--${edgeState('e-dispatch-report')}`" marker-end="url(#arr-c)" />
             <text x="340" y="428" class="label-edge">report</text>
 
-            <line x1="115" y1="501" x2="115" y2="515" class="edge" marker-end="url(#arr)" />
+            <line id="e-sqlgen-sqlexec" x1="115" y1="501" x2="115" y2="515"
+              class="edge" :class="`edge--${edgeState('e-sqlgen-sqlexec')}`" marker-end="url(#arr)" />
             <path d="M 70 528 L 55 528 L 55 433 L 225 433" class="edge-loop" marker-end="url(#arr-l)" />
 
-            <line x1="260" y1="501" x2="260" y2="515" class="edge" marker-end="url(#arr)" />
+            <line id="e-pygen-pyexec" x1="260" y1="501" x2="260" y2="515"
+              class="edge" :class="`edge--${edgeState('e-pygen-pyexec')}`" marker-end="url(#arr)" />
             <path d="M 305 528 L 320 528 L 320 460 L 260 460 L 260 451" class="edge-loop" marker-end="url(#arr-l)" />
 
-            <line x1="405" y1="501" x2="405" y2="589" class="edge" marker-end="url(#arr)" />
+            <line id="e-report-end" x1="405" y1="501" x2="405" y2="589"
+              class="edge" :class="`edge--${edgeState('e-report-end')}`" marker-end="url(#arr)" />
+
+            <!-- ===== Phase I 节点 ===== -->
+            <g :class="`node node--${nodeState('n-start')}`">
+              <circle cx="260" cy="55" r="16" class="node-aura" />
+              <circle cx="260" cy="55" r="11" class="node-terminal" />
+              <text x="260" y="59" class="label-terminal">S</text>
+            </g>
+
+            <g :class="`node node--${nodeState('n-evidence')}`">
+              <rect x="203" y="76" width="114" height="30" rx="9" class="node-aura node-aura--rect" />
+              <rect x="205" y="78" width="110" height="26" rx="8" class="node-box node-box--recall" />
+              <text x="260" y="95" class="label-node">Evidence Recall</text>
+            </g>
+
+            <g :class="`node node--${nodeState('n-schema')}`">
+              <rect x="203" y="114" width="114" height="30" rx="9" class="node-aura node-aura--rect" />
+              <rect x="205" y="116" width="110" height="26" rx="8" class="node-box node-box--recall" />
+              <text x="260" y="133" class="label-node">Schema Recall</text>
+            </g>
+
+            <g :class="`node node--${nodeState('n-relation')}`">
+              <rect x="203" y="152" width="114" height="30" rx="9" class="node-aura node-aura--rect" />
+              <rect x="205" y="154" width="110" height="26" rx="8" class="node-box node-box--recall" />
+              <text x="260" y="171" class="label-node">Table Relation</text>
+            </g>
+
+            <!-- ===== Phase II 节点 ===== -->
+            <g :class="`node node--${nodeState('n-feasible')}`">
+              <polygon points="260,226 299,248 260,270 221,248" class="node-aura node-aura--diamond" />
+              <polygon points="260,230 295,248 260,266 225,248" class="node-decision node-decision--plan" />
+              <text x="260" y="252" class="label-decision">Feasibility</text>
+            </g>
+
+            <g :class="`node node--${nodeState('n-planner')}`">
+              <rect x="203" y="284" width="114" height="30" rx="9" class="node-aura node-aura--rect" />
+              <rect x="205" y="286" width="110" height="26" rx="8" class="node-box node-box--plan" />
+              <text x="260" y="303" class="label-node">Planner</text>
+            </g>
+
+            <g :class="`node node--${nodeState('n-human')}`">
+              <polygon points="260,328 299,350 260,372 221,350" class="node-aura node-aura--diamond" />
+              <polygon points="260,332 295,350 260,368 225,350" class="node-decision node-decision--plan" />
+              <text x="260" y="354" class="label-decision">Human</text>
+            </g>
+
+            <!-- ===== Phase III 节点 ===== -->
+            <g :class="`node node--${nodeState('n-dispatch')}`">
+              <polygon points="260,411 299,433 260,455 221,433" class="node-aura node-aura--diamond" />
+              <polygon points="260,415 295,433 260,451 225,433" class="node-decision node-decision--exec" />
+              <text x="260" y="437" class="label-decision">Dispatch</text>
+            </g>
+
+            <g :class="`node node--${nodeState('n-sqlgen')}`">
+              <rect x="68" y="473" width="94" height="30" rx="9" class="node-aura node-aura--rect" />
+              <rect x="70" y="475" width="90" height="26" rx="8" class="node-box node-box--exec" />
+              <text x="115" y="492" class="label-node">SQL Gen</text>
+            </g>
+
+            <g :class="`node node--${nodeState('n-sqlexec')}`">
+              <rect x="68" y="513" width="94" height="30" rx="9" class="node-aura node-aura--rect" />
+              <rect x="70" y="515" width="90" height="26" rx="8" class="node-box node-box--exec" />
+              <text x="115" y="532" class="label-node">SQL Exec</text>
+            </g>
+
+            <g :class="`node node--${nodeState('n-pygen')}`">
+              <rect x="213" y="473" width="94" height="30" rx="9" class="node-aura node-aura--rect" />
+              <rect x="215" y="475" width="90" height="26" rx="8" class="node-box node-box--exec" />
+              <text x="260" y="492" class="label-node">Python Gen</text>
+            </g>
+
+            <g :class="`node node--${nodeState('n-pyexec')}`">
+              <rect x="213" y="513" width="94" height="30" rx="9" class="node-aura node-aura--rect" />
+              <rect x="215" y="515" width="90" height="26" rx="8" class="node-box node-box--exec" />
+              <text x="260" y="532" class="label-node">Python Exec</text>
+            </g>
+
+            <g :class="`node node--${nodeState('n-report')}`">
+              <rect x="358" y="473" width="94" height="30" rx="9" class="node-aura node-aura--rect" />
+              <rect x="360" y="475" width="90" height="26" rx="8" class="node-box node-box--out" />
+              <text x="405" y="492" class="label-node">Report Gen</text>
+            </g>
+
+            <!-- ===== Phase IV ===== -->
+            <g :class="`node node--${nodeState('n-end')}`">
+              <circle cx="410" cy="600" r="16" class="node-aura" />
+              <circle cx="410" cy="600" r="11" class="node-terminal node-terminal--end" />
+              <text x="410" y="604" class="label-terminal">E</text>
+            </g>
           </svg>
         </div>
 
@@ -782,7 +936,9 @@ const phases = [
 }
 
 .arch-pane__badge {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 5px 10px;
   border: 1px solid rgba(26, 115, 232, 0.24);
   border-radius: 999px;
@@ -791,6 +947,111 @@ const phases = [
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.12em;
+}
+
+.arch-pane__badge--live {
+  border-color: rgba(52, 168, 83, 0.36);
+  background: rgba(52, 168, 83, 0.08);
+  color: #1e8e3e;
+}
+
+.arch-pane__badge-dot {
+  position: relative;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #34a853;
+  box-shadow: 0 0 0 0 rgba(52, 168, 83, 0.6);
+  animation: live-dot 1.4s ease-out infinite;
+}
+
+@keyframes live-dot {
+  0%   { box-shadow: 0 0 0 0 rgba(52, 168, 83, 0.55); }
+  70%  { box-shadow: 0 0 0 7px rgba(52, 168, 83, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(52, 168, 83, 0); }
+}
+
+/* 实时状态条 */
+.arch-pane__status {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 8px 0 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  background:
+    linear-gradient(90deg, rgba(26, 115, 232, 0.05), rgba(155, 114, 203, 0.04));
+  font-family: 'Roboto Mono', 'SF Mono', ui-monospace, monospace;
+  font-size: 11px;
+}
+
+.status-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.status-line__pulse {
+  position: relative;
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #1a73e8;
+  box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.18);
+  animation: status-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes status-pulse {
+  0%, 100% { transform: scale(1);   box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.18); }
+  50%      { transform: scale(1.3); box-shadow: 0 0 0 6px rgba(26, 115, 232, 0.05); }
+}
+
+.status-line__phase {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(26, 115, 232, 0.1);
+  color: var(--color-primary);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.status-line__sep {
+  flex-shrink: 0;
+  color: var(--text-3);
+}
+
+.status-line__label {
+  color: var(--text-1);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  animation: label-fade 0.4s ease;
+}
+
+@keyframes label-fade {
+  from { opacity: 0; transform: translateY(2px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.status-line__progress {
+  flex-shrink: 0;
+  margin-left: 12px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--bg-2);
+  color: var(--text-2);
+  font-weight: 700;
+  letter-spacing: 0.06em;
 }
 
 .arch-pane__title {
@@ -852,6 +1113,13 @@ const phases = [
 .phase-rect {
   stroke-width: 1.2;
   stroke-opacity: 0.5;
+  transition: stroke-opacity 0.3s ease, stroke-width 0.3s ease, filter 0.3s ease;
+}
+
+.phase-rect--active {
+  stroke-opacity: 1;
+  stroke-width: 1.8;
+  filter: drop-shadow(0 0 8px rgba(26, 115, 232, 0.18));
 }
 
 .phase-label {
@@ -933,6 +1201,15 @@ const phases = [
   fill: none;
   stroke: #9aa0a6;
   stroke-width: 1.2;
+  transition: stroke 0.3s ease, stroke-width 0.3s ease;
+}
+
+.edge--running {
+  stroke: #1a73e8;
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+  animation: edge-flow 0.8s linear infinite;
+  filter: drop-shadow(0 0 3px rgba(26, 115, 232, 0.55));
 }
 
 .edge-cond {
@@ -940,6 +1217,19 @@ const phases = [
   stroke: #bdc1c6;
   stroke-dasharray: 5 3;
   stroke-width: 1;
+  transition: stroke 0.3s ease, stroke-width 0.3s ease;
+}
+
+.edge-cond--running {
+  stroke: #1a73e8;
+  stroke-width: 1.8;
+  stroke-dasharray: 6 4;
+  animation: edge-flow 0.8s linear infinite;
+  filter: drop-shadow(0 0 3px rgba(26, 115, 232, 0.55));
+}
+
+@keyframes edge-flow {
+  to { stroke-dashoffset: -20; }
 }
 
 .edge-loop {
@@ -947,6 +1237,76 @@ const phases = [
   stroke: #bdc1c6;
   stroke-dasharray: 2 3;
   stroke-width: 0.9;
+}
+
+/* ===== 节点状态：aura 呼吸圈 + visited / running 染色 ===== */
+.node-aura {
+  fill: rgba(26, 115, 232, 0.55);
+  stroke: none;
+  opacity: 0;
+  transform-origin: center;
+  transform-box: fill-box;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.node-aura--rect,
+.node-aura--diamond {
+  fill: rgba(26, 115, 232, 0.35);
+}
+
+.node--running .node-aura {
+  opacity: 1;
+  animation: aura-breath 1.1s ease-in-out infinite;
+}
+
+@keyframes aura-breath {
+  0%, 100% {
+    opacity: 0.45;
+    transform: scale(1);
+    filter: blur(2px);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.18);
+    filter: blur(3px);
+  }
+}
+
+/* 已走过的节点染上淕淡背景，表示 "已完成" */
+.node--visited .node-box,
+.node--visited .node-decision {
+  fill: rgba(26, 115, 232, 0.06);
+  transition: fill 0.4s ease, stroke-width 0.3s ease;
+}
+
+.node--visited .node-terminal {
+  filter: saturate(0.8) brightness(1.05);
+}
+
+/* 运行中的节点描边加粗 + 高亮 */
+.node--running .node-box,
+.node--running .node-decision {
+  stroke-width: 2;
+  fill: rgba(26, 115, 232, 0.10);
+  filter: drop-shadow(0 0 6px rgba(26, 115, 232, 0.4));
+  transition: filter 0.3s ease, stroke-width 0.3s ease, fill 0.3s ease;
+}
+
+.node--running .node-terminal {
+  filter: drop-shadow(0 0 8px rgba(26, 115, 232, 0.7));
+  animation: terminal-bounce 1.1s ease-in-out infinite;
+}
+
+@keyframes terminal-bounce {
+  0%, 100% { transform: scale(1); transform-origin: center; transform-box: fill-box; }
+  50%      { transform: scale(1.12); transform-origin: center; transform-box: fill-box; }
+}
+
+.node--running .label-node,
+.node--running .label-decision {
+  fill: var(--color-primary);
+  font-weight: 700;
 }
 
 /* Legend */
