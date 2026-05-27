@@ -11,27 +11,56 @@
 
 <style>
 :root {
-  color-scheme: light;
-  --color-primary: #f97316;
-  --color-primary-dark: #ea580c;
-  --color-primary-soft: #fff7ed;
-  --color-accent: #2563eb;
-  --color-success: #16a34a;
-  --color-warning: #d97706;
-  --color-danger: #dc2626;
-  --color-ink: #0f172a;
-  --color-muted: #64748b;
-  --color-subtle: #94a3b8;
-  --color-line: rgba(148, 163, 184, 0.24);
-  --surface-card: rgba(255, 255, 255, 0.88);
-  --surface-card-solid: #ffffff;
-  --shadow-sm: 0 10px 30px rgba(15, 23, 42, 0.08);
-  --shadow-md: 0 20px 60px rgba(15, 23, 42, 0.12);
-  --shadow-glow: 0 18px 60px rgba(249, 115, 22, 0.22);
+  color-scheme: dark;
+
+  /* ===== 主色：靛紫 + 青蓝 ===== */
+  --color-primary: #818cf8;          /* indigo-400 */
+  --color-primary-strong: #6366f1;   /* indigo-500 */
+  --color-primary-deep: #4f46e5;     /* indigo-600 */
+  --color-accent: #22d3ee;           /* cyan-400 */
+  --color-accent-strong: #06b6d4;    /* cyan-500 */
+
+  /* ===== 阶段语义色（4 大阶段）===== */
+  --phase-recall: #22d3ee;     /* cyan   - Phase I  Retrieval */
+  --phase-plan: #a78bfa;       /* violet - Phase II Planning  */
+  --phase-exec: #fbbf24;       /* amber  - Phase III Execution */
+  --phase-output: #34d399;     /* emerald - Phase IV Output    */
+
+  /* ===== 状态色 ===== */
+  --color-success: #34d399;
+  --color-warning: #fbbf24;
+  --color-danger: #f87171;
+  --color-info: #60a5fa;
+
+  /* ===== 文字 / 表面 ===== */
+  --text-1: #e2e8f0;            /* 主文 */
+  --text-2: #94a3b8;            /* 次文 */
+  --text-3: #64748b;            /* 弱化 */
+  --text-inverse: #0f172a;
+
+  --bg-base: #0b1020;
+  --bg-1: rgba(255, 255, 255, 0.04);
+  --bg-2: rgba(255, 255, 255, 0.06);
+  --bg-3: rgba(255, 255, 255, 0.09);
+  --bg-elev: rgba(15, 23, 42, 0.72);
+
+  --line-1: rgba(148, 163, 184, 0.14);
+  --line-2: rgba(148, 163, 184, 0.22);
+  --line-strong: rgba(148, 163, 184, 0.36);
+
+  /* ===== 阴影 ===== */
+  --shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.24);
+  --shadow-md: 0 12px 36px rgba(0, 0, 0, 0.36);
+  --shadow-lg: 0 24px 64px rgba(0, 0, 0, 0.48);
+  --shadow-glow: 0 0 0 1px rgba(129, 140, 248, 0.4), 0 16px 48px rgba(99, 102, 241, 0.32);
+
+  /* ===== 圆角 ===== */
+  --radius-xs: 8px;
   --radius-sm: 12px;
-  --radius-md: 18px;
-  --radius-lg: 28px;
-  --radius-xl: 36px;
+  --radius-md: 16px;
+  --radius-lg: 22px;
+  --radius-xl: 28px;
+  --radius-2xl: 34px;
 }
 
 /* 全局重置 */
@@ -43,31 +72,51 @@
 
 html {
   min-height: 100%;
-  background: #f8fafc;
+  background: var(--bg-base);
   scroll-behavior: smooth;
 }
 
 body {
+  position: relative;
   min-width: 320px;
   min-height: 100vh;
   margin: 0;
   overflow-x: hidden;
   font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-    'Helvetica Neue', Arial, sans-serif;
-  color: var(--color-ink);
+    'Inter', 'PingFang SC', 'Hiragino Sans GB', ui-sans-serif, system-ui, -apple-system,
+    BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: var(--text-1);
   background:
-    radial-gradient(circle at 8% -10%, rgba(249, 115, 22, 0.16), transparent 34%),
-    radial-gradient(circle at 92% 0%, rgba(37, 99, 235, 0.12), transparent 30%),
-    linear-gradient(180deg, #fffaf4 0%, #f8fafc 46%, #eef4ff 100%);
+    /* Aurora 光斑 */
+    radial-gradient(1100px 620px at 8% -4%, rgba(99, 102, 241, 0.34), transparent 60%),
+    radial-gradient(900px 540px at 96% 6%, rgba(34, 211, 238, 0.22), transparent 58%),
+    radial-gradient(720px 480px at 60% 100%, rgba(167, 139, 250, 0.22), transparent 60%),
+    linear-gradient(180deg, #08091a 0%, #0b1020 48%, #050816 100%);
+  background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
 }
 
-body::selection {
+/* 噪点纹理叠加 */
+body::before {
+  position: fixed;
+  z-index: 0;
+  inset: 0;
+  pointer-events: none;
+  content: '';
+  background-image:
+    radial-gradient(circle at 25% 25%, rgba(255, 255, 255, 0.024) 1px, transparent 1px),
+    radial-gradient(circle at 75% 75%, rgba(255, 255, 255, 0.024) 1px, transparent 1px);
+  background-size: 22px 22px, 22px 22px;
+  background-position: 0 0, 11px 11px;
+  opacity: 0.6;
+}
+
+body::selection,
+::selection {
   color: #ffffff;
-  background: var(--color-primary);
+  background: var(--color-primary-strong);
 }
 
 button,
@@ -82,6 +131,8 @@ button {
 }
 
 #app {
+  position: relative;
+  z-index: 1;
   min-height: 100vh;
 }
 
@@ -96,24 +147,31 @@ a {
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(226, 232, 240, 0.6);
+  background: rgba(255, 255, 255, 0.03);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, rgba(249, 115, 22, 0.8), rgba(37, 99, 235, 0.66));
-  border: 2px solid rgba(248, 250, 252, 0.85);
+  background: linear-gradient(180deg, rgba(129, 140, 248, 0.6), rgba(34, 211, 238, 0.5));
+  border: 2px solid transparent;
   border-radius: 999px;
+  background-clip: padding-box;
 }
 
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(129, 140, 248, 0.85), rgba(34, 211, 238, 0.75));
+  background-clip: padding-box;
+}
+
+/* ===== Element Plus 深色玻璃态 ===== */
 .el-button {
-  border-radius: 999px;
+  border-radius: 14px;
   font-weight: 700;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.005em;
   transition:
-    transform 0.2s ease,
-    box-shadow 0.2s ease,
-    border-color 0.2s ease,
-    background 0.2s ease;
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    background 0.18s ease,
+    border-color 0.18s ease;
 }
 
 .el-button:hover {
@@ -122,37 +180,64 @@ a {
 
 .el-button--primary {
   border: none;
-  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
-  box-shadow: 0 14px 32px rgba(249, 115, 22, 0.24);
+  color: #ffffff;
+  background: linear-gradient(135deg, var(--color-primary-strong), var(--color-primary-deep));
+  box-shadow: 0 10px 28px rgba(79, 70, 229, 0.46);
 }
 
 .el-button--primary:hover,
 .el-button--primary:focus {
-  background: linear-gradient(135deg, #fb923c, var(--color-primary));
+  background: linear-gradient(135deg, #818cf8, #4f46e5);
   box-shadow: var(--shadow-glow);
+}
+
+.el-button--default,
+.el-button.is-plain {
+  color: var(--text-1);
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--line-2);
+  backdrop-filter: blur(12px);
+}
+
+.el-button--default:hover,
+.el-button.is-plain:hover {
+  color: var(--text-1);
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(129, 140, 248, 0.5);
 }
 
 .el-input__wrapper,
 .el-textarea__inner,
 .el-select__wrapper {
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.92);
+  border-radius: 14px;
+  color: var(--text-1);
+  background: rgba(255, 255, 255, 0.04);
   box-shadow:
-    0 0 0 1px rgba(148, 163, 184, 0.22) inset,
-    0 12px 28px rgba(15, 23, 42, 0.04);
+    0 0 0 1px var(--line-2) inset,
+    0 6px 18px rgba(0, 0, 0, 0.18);
   transition:
-    box-shadow 0.2s ease,
-    background 0.2s ease;
+    box-shadow 0.18s ease,
+    background 0.18s ease;
+}
+
+.el-textarea__inner {
+  color: var(--text-1);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.el-textarea__inner::placeholder,
+.el-input__inner::placeholder {
+  color: var(--text-3);
 }
 
 .el-input__wrapper.is-focus,
 .el-textarea__inner:focus,
 .el-select__wrapper.is-focused {
-  background: #ffffff;
+  background: rgba(255, 255, 255, 0.07);
   box-shadow:
-    0 0 0 1px rgba(249, 115, 22, 0.52) inset,
-    0 0 0 4px rgba(249, 115, 22, 0.1),
-    0 16px 36px rgba(15, 23, 42, 0.08);
+    0 0 0 1px rgba(129, 140, 248, 0.7) inset,
+    0 0 0 4px rgba(129, 140, 248, 0.18),
+    0 12px 28px rgba(0, 0, 0, 0.3);
 }
 
 .el-textarea__inner {
@@ -160,22 +245,59 @@ a {
   line-height: 1.7;
 }
 
+.el-input__inner,
+.el-select__placeholder {
+  color: var(--text-1) !important;
+}
+
+.el-radio__label {
+  color: var(--text-2);
+}
+
+.el-radio__input.is-checked + .el-radio__label {
+  color: var(--text-1);
+}
+
+/* select 下拉浮层 */
+.el-popper.is-light,
+.el-select__popper.el-popper {
+  background: rgba(15, 23, 42, 0.95) !important;
+  border-color: var(--line-2) !important;
+  backdrop-filter: blur(24px);
+}
+
+.el-select-dropdown__item {
+  color: var(--text-2);
+}
+
+.el-select-dropdown__item.is-hovering,
+.el-select-dropdown__item.is-selected {
+  color: var(--text-1);
+  background: rgba(129, 140, 248, 0.16) !important;
+}
+
+/* ===== 路由切换动画 ===== */
 .page-fade-enter-active,
 .page-fade-leave-active {
   transition:
-    opacity 0.28s ease,
-    transform 0.28s ease,
-    filter 0.28s ease;
+    opacity 0.32s ease,
+    transform 0.32s ease,
+    filter 0.32s ease;
 }
 
 .page-fade-enter-from,
 .page-fade-leave-to {
   opacity: 0;
-  transform: translateY(10px) scale(0.99);
-  filter: blur(4px);
+  transform: translateY(8px) scale(0.995);
+  filter: blur(6px);
 }
 
-body .timeline-panel :is(
+/* ============================================== */
+/* ===== 节点卡片：按阶段 4 色相统一重塑      ===== */
+/* ============================================== */
+
+/* —— 通用基底 —— */
+body :is(
   .evidence-card,
   .feasibility-card,
   .human-card,
@@ -190,21 +312,25 @@ body .timeline-panel :is(
   .sql-generation-card,
   .relation-card
 ) {
+  --node-color: var(--color-primary);
+  --node-color-soft: rgba(129, 140, 248, 0.18);
+
   position: relative;
   overflow: hidden;
-  border: 1px solid rgba(148, 163, 184, 0.18) !important;
-  border-radius: 24px;
+  border: 1px solid var(--line-2) !important;
+  border-radius: var(--radius-lg);
   background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.88)),
-    radial-gradient(circle at top left, rgba(249, 115, 22, 0.13), transparent 34%) !important;
-  box-shadow: 0 18px 46px rgba(15, 23, 42, 0.08);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.015)) !important;
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(18px);
   transition:
     transform 0.22s ease,
     box-shadow 0.22s ease,
     border-color 0.22s ease;
 }
 
-body .timeline-panel :is(
+/* 顶部色带 + 角落光晕 */
+body :is(
   .evidence-card,
   .feasibility-card,
   .human-card,
@@ -224,11 +350,11 @@ body .timeline-panel :is(
   pointer-events: none;
   content: '';
   background:
-    linear-gradient(90deg, rgba(249, 115, 22, 0.34), rgba(37, 99, 235, 0.22), transparent 58%) top / 100% 3px no-repeat,
-    radial-gradient(circle at 92% 12%, rgba(37, 99, 235, 0.08), transparent 20%);
+    linear-gradient(90deg, var(--node-color), transparent 56%) top / 100% 2px no-repeat,
+    radial-gradient(420px 180px at 0% 0%, var(--node-color-soft), transparent 62%);
 }
 
-body .timeline-panel :is(
+body :is(
   .evidence-card,
   .feasibility-card,
   .human-card,
@@ -244,11 +370,43 @@ body .timeline-panel :is(
   .relation-card
 ):hover {
   transform: translateY(-2px);
-  border-color: rgba(249, 115, 22, 0.26) !important;
-  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.12);
+  border-color: rgba(255, 255, 255, 0.18) !important;
+  box-shadow: var(--shadow-md);
 }
 
-body .timeline-panel :is(
+/* —— 阶段 I: Retrieval (cyan) —— */
+body :is(.evidence-card, .scheme-card, .relation-card) {
+  --node-color: var(--phase-recall);
+  --node-color-soft: rgba(34, 211, 238, 0.16);
+}
+
+/* —— 阶段 II: Planning (violet) —— */
+body :is(.feasibility-card, .planner-card, .human-card) {
+  --node-color: var(--phase-plan);
+  --node-color-soft: rgba(167, 139, 250, 0.18);
+}
+
+/* —— 阶段 III: Execution (amber) —— */
+body :is(
+  .plan-execution-card,
+  .sql-generation-card,
+  .sql-execution-card,
+  .python-generation-card,
+  .python-execution-card,
+  .python-analysis-card
+) {
+  --node-color: var(--phase-exec);
+  --node-color-soft: rgba(251, 191, 36, 0.18);
+}
+
+/* —— 阶段 IV: Output (emerald) —— */
+body :is(.report-generation-card) {
+  --node-color: var(--phase-output);
+  --node-color-soft: rgba(52, 211, 153, 0.18);
+}
+
+/* 头部内层 */
+body :is(
   .evidence-card__header,
   .feasibility-card__header,
   .human-card__header,
@@ -267,7 +425,7 @@ body .timeline-panel :is(
   z-index: 1;
 }
 
-body .timeline-panel :is(
+body :is(
   .evidence-card__eyebrow,
   .feasibility-card__eyebrow,
   .human-card__eyebrow,
@@ -282,10 +440,13 @@ body .timeline-panel :is(
   .sql-generation-card__eyebrow,
   .relation-card__eyebrow
 ) {
-  color: var(--color-primary-dark) !important;
+  color: var(--node-color) !important;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 800 !important;
 }
 
-body .timeline-panel :is(
+body :is(
   .evidence-card__title,
   .feasibility-card__title,
   .human-card__title,
@@ -300,11 +461,13 @@ body .timeline-panel :is(
   .sql-generation-card__title,
   .relation-card__title
 ) {
+  color: var(--text-1) !important;
   font-size: 17px;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.012em;
+  font-weight: 800 !important;
 }
 
-body .timeline-panel :is(
+body :is(
   .evidence-card__status,
   .feasibility-card__status,
   .human-card__status,
@@ -319,13 +482,16 @@ body .timeline-panel :is(
   .sql-generation-card__status,
   .relation-card__status
 ) {
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  background: rgba(255, 255, 255, 0.78) !important;
-  color: var(--color-muted) !important;
-  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
+  border: 1px solid var(--line-2) !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  color: var(--text-2) !important;
+  box-shadow: none;
+  font-weight: 800;
+  letter-spacing: 0.04em;
 }
 
-body .timeline-panel :is(
+/* 成功态：统一为 emerald */
+body :is(
   .evidence-card--success,
   .feasibility-card--success,
   .human-card--success,
@@ -354,12 +520,13 @@ body .timeline-panel :is(
   .sql-generation-card__status,
   .relation-card__status
 ) {
-  border-color: rgba(22, 163, 74, 0.22);
-  background: rgba(240, 253, 244, 0.86) !important;
-  color: #15803d !important;
+  border-color: rgba(52, 211, 153, 0.3) !important;
+  background: rgba(52, 211, 153, 0.12) !important;
+  color: #6ee7b7 !important;
 }
 
-body .timeline-panel :is(
+/* 内部分区 */
+body :is(
   .evidence-card__section,
   .feasibility-card__section,
   .human-card__section,
@@ -379,23 +546,154 @@ body .timeline-panel :is(
 ) {
   position: relative;
   z-index: 1;
-  border-color: rgba(148, 163, 184, 0.18) !important;
-  background: rgba(255, 255, 255, 0.76) !important;
-  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.04);
+  border-color: var(--line-2) !important;
+  background: rgba(255, 255, 255, 0.03) !important;
+  box-shadow: none;
+  color: var(--text-2);
 }
 
-body .timeline-panel pre {
-  overflow-x: auto;
-  border-radius: 14px;
-  background: rgba(15, 23, 42, 0.04);
+/* 通用文字降亮 */
+body :is(
+  .evidence-card,
+  .feasibility-card,
+  .human-card,
+  .plan-execution-card,
+  .planner-card,
+  .python-analysis-card,
+  .python-execution-card,
+  .python-generation-card,
+  .report-generation-card,
+  .scheme-card,
+  .sql-execution-card,
+  .sql-generation-card,
+  .relation-card
+) :is(p, span, li, td, th, label, dt, dd) {
+  color: var(--text-2);
 }
 
-body .timeline-panel table {
-  border-radius: 12px;
+body :is(
+  .evidence-card,
+  .feasibility-card,
+  .human-card,
+  .plan-execution-card,
+  .planner-card,
+  .python-analysis-card,
+  .python-execution-card,
+  .python-generation-card,
+  .report-generation-card,
+  .scheme-card,
+  .sql-execution-card,
+  .sql-generation-card,
+  .relation-card
+) :is(h1, h2, h3, h4, strong, b) {
+  color: var(--text-1);
+}
+
+/* 代码块与表格 */
+body :is(
+  .evidence-card,
+  .feasibility-card,
+  .human-card,
+  .plan-execution-card,
+  .planner-card,
+  .python-analysis-card,
+  .python-execution-card,
+  .python-generation-card,
+  .report-generation-card,
+  .scheme-card,
+  .sql-execution-card,
+  .sql-generation-card,
+  .relation-card
+) pre,
+body :is(
+  .evidence-card,
+  .feasibility-card,
+  .human-card,
+  .plan-execution-card,
+  .planner-card,
+  .python-analysis-card,
+  .python-execution-card,
+  .python-generation-card,
+  .report-generation-card,
+  .scheme-card,
+  .sql-execution-card,
+  .sql-generation-card,
+  .relation-card
+) code {
+  color: #e0e7ff;
+  background: rgba(2, 6, 23, 0.7) !important;
+  border-radius: var(--radius-sm);
+}
+
+body :is(
+  .evidence-card,
+  .feasibility-card,
+  .human-card,
+  .plan-execution-card,
+  .planner-card,
+  .python-analysis-card,
+  .python-execution-card,
+  .python-generation-card,
+  .report-generation-card,
+  .scheme-card,
+  .sql-execution-card,
+  .sql-generation-card,
+  .relation-card
+) table {
+  border-radius: var(--radius-sm);
   overflow: hidden;
 }
 
-body .timeline-panel th {
-  background: linear-gradient(180deg, #f8fafc, #eef2ff) !important;
+body :is(
+  .evidence-card,
+  .feasibility-card,
+  .human-card,
+  .plan-execution-card,
+  .planner-card,
+  .python-analysis-card,
+  .python-execution-card,
+  .python-generation-card,
+  .report-generation-card,
+  .scheme-card,
+  .sql-execution-card,
+  .sql-generation-card,
+  .relation-card
+) th {
+  color: var(--text-1);
+  background: rgba(255, 255, 255, 0.06) !important;
+  border-color: var(--line-2) !important;
+}
+
+body :is(
+  .evidence-card,
+  .feasibility-card,
+  .human-card,
+  .plan-execution-card,
+  .planner-card,
+  .python-analysis-card,
+  .python-execution-card,
+  .python-generation-card,
+  .report-generation-card,
+  .scheme-card,
+  .sql-execution-card,
+  .sql-generation-card,
+  .relation-card
+) td {
+  border-color: var(--line-2) !important;
+}
+
+/* markdown 内容 */
+.md-editor-preview-wrapper,
+.md-editor-preview {
+  color: var(--text-2) !important;
+  background: transparent !important;
+}
+
+.md-editor-preview :is(h1, h2, h3, h4, h5, h6, strong) {
+  color: var(--text-1) !important;
+}
+
+.md-editor-preview a {
+  color: var(--color-accent) !important;
 }
 </style>

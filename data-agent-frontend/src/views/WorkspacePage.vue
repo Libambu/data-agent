@@ -50,6 +50,23 @@ const NODE_COMPONENTS: Record<string, Component> = {
   [DATA_AGENT_GRAPH_NODE.REPORT_GENERATION]: markRaw(ReportGenerationNodeCard),
 }
 
+// 节点元信息：用于 Rail 与 MiniMap 显示
+const NODE_META: Record<string, { label: string; phase: 'recall' | 'plan' | 'exec' | 'output'; idx: number }> = {
+  [DATA_AGENT_GRAPH_NODE.EVIDENCE_RECALL]:        { label: 'Evidence Recall', phase: 'recall', idx: 1 },
+  [DATA_AGENT_GRAPH_NODE.SCHEMA_RECALL]:          { label: 'Schema Recall',   phase: 'recall', idx: 2 },
+  [DATA_AGENT_GRAPH_NODE.TABLE_RELATION]:         { label: 'Table Relation',  phase: 'recall', idx: 3 },
+  [DATA_AGENT_GRAPH_NODE.FEASIBILITY_ASSESSMENT]: { label: 'Feasibility',     phase: 'plan',   idx: 4 },
+  [DATA_AGENT_GRAPH_NODE.PLANNER]:                { label: 'Planner',         phase: 'plan',   idx: 5 },
+  [DATA_AGENT_GRAPH_NODE.HUMAN_FEEDBACK]:         { label: 'Human Feedback',  phase: 'plan',   idx: 6 },
+  [DATA_AGENT_GRAPH_NODE.PLAN_EXECUTION]:         { label: 'Plan Dispatch',   phase: 'exec',   idx: 7 },
+  [DATA_AGENT_GRAPH_NODE.SQL_GENERATION]:         { label: 'SQL Generation',  phase: 'exec',   idx: 8 },
+  [DATA_AGENT_GRAPH_NODE.SQL_EXECUTION]:          { label: 'SQL Execution',   phase: 'exec',   idx: 9 },
+  [DATA_AGENT_GRAPH_NODE.PYTHON_GENERATION]:      { label: 'Python Gen',      phase: 'exec',   idx: 10 },
+  [DATA_AGENT_GRAPH_NODE.PYTHON_EXECUTION]:       { label: 'Python Exec',     phase: 'exec',   idx: 11 },
+  [DATA_AGENT_GRAPH_NODE.PYTHON_ANALYSIS]:        { label: 'Python Analysis', phase: 'exec',   idx: 12 },
+  [DATA_AGENT_GRAPH_NODE.REPORT_GENERATION]:      { label: 'Report',          phase: 'output', idx: 13 },
+}
+
 const DEFAULT_EXAMPLES = [
   'What is the highest percentage of K–12 students eligible for free meals among schools in Alameda County?',
   'How many schools that are exclusively virtual have an average SAT Math score greater than 400?',
@@ -77,6 +94,7 @@ const currentContextId = ref<string>()
 const awaitingConfirmation = ref(false)
 const confirmationApproved = ref(true)
 const confirmationFeedback = ref('用户确认继续执行')
+
 const upsertStep = (
   name: string,
   chunk: string,
@@ -117,16 +135,34 @@ const progressPercentage = computed(() => {
 const isClientReady = computed(() => Boolean(client.value))
 const canSubmit = computed(() => Boolean((userInput.value ?? '').trim()) && isClientReady.value && !isRunning.value)
 const workspaceStatusText = computed(() => {
-  if (!isClientReady.value) return '连接中'
-  if (isRunning.value) return '执行中'
-  if (orderedSteps.value.length) return '执行完成'
-  return '就绪'
+  if (!isClientReady.value) return 'Connecting'
+  if (isRunning.value) return 'Running'
+  if (orderedSteps.value.length) return 'Completed'
+  return 'Ready'
 })
 const timelineStatusText = computed(() => {
   if (!isClientReady.value) return '正在连接 Agent'
   if (isRunning.value) return '正在执行'
   if (orderedSteps.value.length) return '执行完成'
   return '等待开始'
+})
+
+// 步骤状态映射，给 Rail / MiniMap 使用
+const stepStatusMap = computed(() => {
+  const map: Record<string, GraphStep['status'] | 'idle'> = {}
+  for (const node of DATA_AGENT_NODE_ORDER) {
+    const step = steps.find((s) => s.name === node)
+    map[node] = step ? step.status : 'idle'
+  }
+  return map
+})
+
+// 当前活跃节点
+const activeNode = computed(() => {
+  const pending = orderedSteps.value.find((s) => s.status === 'pending')
+  if (pending) return pending.name
+  if (orderedSteps.value.length) return orderedSteps.value[orderedSteps.value.length - 1]?.name
+  return null
 })
 
 const resetSteps = () => {
@@ -221,6 +257,14 @@ const goHome = () => {
   router.push('/')
 }
 
+// 滚动到节点
+const scrollToNode = (nodeName: string) => {
+  const el = document.getElementById(`node-${nodeName}`)
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+}
+
 onMounted(async () => {
   const agentCard = await request.get<AgentCard, AgentCard>('/.well-known/agent-card.json')
   client.value = await factory.createFromAgentCard(agentCard)
@@ -228,820 +272,1486 @@ onMounted(async () => {
 </script>
 
 <template>
-  <main class="page-shell">
-    <!-- 顶部导航栏 -->
-    <nav class="workspace-nav">
-      <div class="workspace-nav__left" @click="goHome">
-        <span class="workspace-nav__logo">
-          <el-icon><HomeFilled /></el-icon>
+  <main class="ws">
+    <!-- ============ 顶部 AppBar ============ -->
+    <header class="appbar">
+      <div class="appbar__l" @click="goHome">
+        <span class="appbar__logo">
+          <el-icon><DataAnalysis /></el-icon>
         </span>
-        <div>
-          <span>Data Agent</span>
-          <small>智能数据分析工作台</small>
-        </div>
-      </div>
-      <div class="workspace-nav__status">
-        <span
-          :class="[
-            'status-dot',
-            { 'status-dot--active': isRunning, 'status-dot--ready': isClientReady && !isRunning },
-          ]"
-        ></span>
-        {{ workspaceStatusText }}
-      </div>
-    </nav>
-
-    <section class="workspace-hero">
-      <div>
-        <div class="workspace-hero__eyebrow">Agent Command Center</div>
-        <h1>把业务问题转化为可追踪的数据分析流程</h1>
-        <p>选择数据库、输入自然语言问题，系统会自动完成召回、规划、SQL/Python 执行与报告生成。</p>
-      </div>
-      <div class="workspace-hero__stats">
-        <div class="workspace-stat">
-          <strong>{{ orderedSteps.length }}</strong>
-          <span>已触发节点</span>
-        </div>
-        <div class="workspace-stat">
-          <strong>{{ completedStepCount }}</strong>
-          <span>完成节点</span>
-        </div>
-        <div class="workspace-stat">
-          <strong>{{ progressPercentage }}%</strong>
-          <span>执行进度</span>
-        </div>
-      </div>
-    </section>
-
-    <!-- 输入区域 -->
-    <section class="input-panel">
-      <div class="input-panel__topline">
-        <div>
-          <h2>分析请求</h2>
-          <p>可直接使用示例，也可以输入自己的业务分析问题。</p>
-        </div>
-        <div class="input-panel__db">
-          <span>数据集</span>
-          <el-select v-model="selectedDatabase" placeholder="选择数据库" size="large">
-            <el-option
-              v-for="database in DATABASE_OPTIONS"
-              :key="database"
-              :label="database"
-              :value="database"
-            />
-          </el-select>
+        <div class="appbar__brand">
+          <span class="appbar__name">Data Agent</span>
+          <span class="appbar__sub">智能数据分析工作台</span>
         </div>
       </div>
 
-      <div class="input-panel__examples">
-        <span class="input-panel__examples-label">推荐问题</span>
-        <button
-          v-for="example in DEFAULT_EXAMPLES"
-          :key="example"
-          class="example-chip"
-          type="button"
-          @click="userInput = example"
-        >
-          <el-icon><ChatLineRound /></el-icon>
-          {{ example }}
+      <div class="appbar__c">
+        <span class="appbar__crumb appbar__crumb--muted">Workspace</span>
+        <span class="appbar__crumb-sep">/</span>
+        <span class="appbar__crumb">{{ selectedDatabase }}</span>
+        <span class="appbar__crumb-sep">/</span>
+        <span class="appbar__crumb appbar__crumb--accent">
+          {{ orderedSteps.length ? `Run-${(currentTaskId || '').slice(0, 6) || 'new'}` : 'New Session' }}
+        </span>
+      </div>
+
+      <div class="appbar__r">
+        <div class="appbar__status">
+          <span :class="['dot', { 'dot--ok': isClientReady && !isRunning, 'dot--run': isRunning }]"></span>
+          <span class="appbar__status-text">{{ workspaceStatusText }}</span>
+        </div>
+        <button class="appbar__home" @click="goHome">
+          <el-icon><HomeFilled /></el-icon>
+          <span>Home</span>
         </button>
       </div>
+    </header>
 
-      <div class="input-panel__composer">
-        <el-input
-          v-model="userInput"
-          class="input-panel__textarea"
-          :rows="3"
-          type="textarea"
-          resize="none"
-          placeholder="例如：统计 Alameda County 中 K-12 学生免费餐资格比例最高的学校..."
-          @keydown.enter.exact.prevent="handleSend"
-        />
+    <!-- ============ 三栏主体 ============ -->
+    <div class="grid">
+      <!-- ====== 左 Rail：Pipeline ====== -->
+      <aside class="rail">
+        <div class="rail__head">
+          <span class="rail__label">PIPELINE</span>
+          <span class="rail__count">{{ completedStepCount }}/{{ DATA_AGENT_NODE_ORDER.length }}</span>
+        </div>
 
-        <div class="input-panel__actions">
-          <span>{{ isClientReady ? 'Agent 已连接' : '正在连接 Agent...' }}</span>
-          <el-button
-            class="input-panel__btn"
-            type="primary"
-            size="large"
-            :disabled="!canSubmit"
-            :loading="isRunning"
-            @click="handleSend"
+        <div class="rail__list">
+          <button
+            v-for="node in DATA_AGENT_NODE_ORDER"
+            :key="node"
+            class="rail-item"
+            :class="[
+              `rail-item--${NODE_META[node]?.phase}`,
+              `rail-item--${stepStatusMap[node]}`,
+              { 'rail-item--active': activeNode === node },
+            ]"
+            type="button"
+            :disabled="stepStatusMap[node] === 'idle'"
+            @click="scrollToNode(node)"
           >
-            <el-icon v-if="!isRunning"><Promotion /></el-icon>
-            {{ isRunning ? '运行中' : '开始执行' }}
-          </el-button>
+            <span class="rail-item__idx">
+              {{ String(NODE_META[node]?.idx ?? 0).padStart(2, '0') }}
+            </span>
+            <span class="rail-item__body">
+              <span class="rail-item__name">{{ NODE_META[node]?.label }}</span>
+              <span class="rail-item__phase">PHASE · {{ NODE_META[node]?.phase }}</span>
+            </span>
+            <span class="rail-item__dot" aria-hidden="true"></span>
+          </button>
         </div>
-      </div>
-    </section>
 
-    <!-- 时间线区域 -->
-    <section class="timeline-panel">
-      <div class="timeline-panel__header">
-        <div>
-          <span class="timeline-panel__eyebrow">Execution Timeline</span>
-          <h2>节点执行轨迹</h2>
-          <p>实时展示各节点状态、结构化输出、代码执行结果和最终报告。</p>
-        </div>
-        <div class="timeline-panel__status">
-          {{ timelineStatusText }}
-        </div>
-      </div>
-
-      <div class="progress-card">
-        <div class="progress-card__info">
-          <span>整体进度</span>
-          <strong>{{ completedStepCount }} / {{ DATA_AGENT_NODE_ORDER.length }}</strong>
-        </div>
-        <div class="progress-card__bar" aria-hidden="true">
-          <span :style="{ width: `${progressPercentage}%` }"></span>
-        </div>
-      </div>
-
-      <div v-if="orderedSteps.length" class="timeline-panel__list">
-        <template v-for="step in orderedSteps" :key="step.id">
-          <component
-            v-if="NODE_COMPONENTS[step.name]"
-            :is="NODE_COMPONENTS[step.name]"
-            :name="step.name"
-            :content="step.content"
-            :data="step.data"
-            :status="step.status"
-          />
-        </template>
-      </div>
-
-      <div v-if="awaitingConfirmation" class="human-input-panel">
-        <div class="human-input-panel__header">
-          <div class="human-input-panel__icon">
-            <el-icon><UserFilled /></el-icon>
-          </div>
-          <div>
-            <h3>需要人工输入</h3>
-            <p>请填写确认结果和反馈，提交后会继续执行后续节点。</p>
+        <div class="rail__foot">
+          <div class="rail-progress">
+            <div class="rail-progress__bar">
+              <span :style="{ width: `${progressPercentage}%` }"></span>
+            </div>
+            <div class="rail-progress__num">{{ progressPercentage }}%</div>
           </div>
         </div>
-        <div class="human-input-panel__field">
-          <div class="human-input-panel__label">确认结果</div>
-          <el-radio-group v-model="confirmationApproved">
-            <el-radio :value="true">确认继续</el-radio>
-            <el-radio :value="false">取消执行</el-radio>
-          </el-radio-group>
-        </div>
-        <div class="human-input-panel__field">
-          <div class="human-input-panel__label">反馈内容</div>
-          <el-input
-            v-model="confirmationFeedback"
-            type="textarea"
-            :rows="3"
-            resize="none"
-            placeholder="请输入反馈内容"
-          />
-        </div>
-        <el-button type="primary" :loading="isRunning" @click="submitConfirmation">
-          提交人工输入
-        </el-button>
-      </div>
+      </aside>
 
-      <div v-else-if="!orderedSteps.length" class="empty-state">
-        <div class="empty-state__orb">
-          <el-icon class="empty-state__icon"><Cpu /></el-icon>
+      <!-- ====== 中央 Stage ====== -->
+      <section class="stage">
+        <!-- 输入面板（Composer） -->
+        <div class="composer">
+          <div class="composer__top">
+            <div class="composer__title">
+              <span class="composer__eyebrow">QUERY</span>
+              <h2>把业务问题转化为可追踪的数据分析</h2>
+            </div>
+            <div class="composer__db">
+              <span class="composer__db-label">Database</span>
+              <el-select v-model="selectedDatabase" size="default">
+                <el-option
+                  v-for="database in DATABASE_OPTIONS"
+                  :key="database"
+                  :label="database"
+                  :value="database"
+                />
+              </el-select>
+            </div>
+          </div>
+
+          <div class="composer__chips">
+            <span class="composer__chips-label">PRESETS</span>
+            <button
+              v-for="example in DEFAULT_EXAMPLES"
+              :key="example"
+              class="chip"
+              type="button"
+              @click="userInput = example"
+            >
+              <el-icon><ChatLineRound /></el-icon>
+              <span>{{ example }}</span>
+            </button>
+          </div>
+
+          <div class="composer__box">
+            <el-input
+              v-model="userInput"
+              :rows="3"
+              type="textarea"
+              resize="none"
+              placeholder="例如：统计 Alameda County 中 K-12 学生免费餐资格比例最高的学校..."
+              @keydown.enter.exact.prevent="handleSend"
+            />
+            <div class="composer__actions">
+              <span class="composer__hint">
+                <kbd>Enter</kbd> 提交
+                <span class="composer__sep"></span>
+                {{ isClientReady ? 'Agent connected' : 'Connecting...' }}
+              </span>
+              <el-button
+                type="primary"
+                size="large"
+                :disabled="!canSubmit"
+                :loading="isRunning"
+                @click="handleSend"
+              >
+                <el-icon v-if="!isRunning"><Promotion /></el-icon>
+                <span>{{ isRunning ? 'Running' : 'Run Pipeline' }}</span>
+              </el-button>
+            </div>
+          </div>
         </div>
-        <div class="empty-state__title">等待执行</div>
-        <div class="empty-state__desc">
-          选择示例问题或输入自定义需求，点击执行即可观察节点运行轨迹。
+
+        <!-- 执行流 -->
+        <div class="trace">
+          <div class="trace__head">
+            <div class="trace__title">
+              <span class="trace__eyebrow">EXECUTION TRACE</span>
+              <h3>节点执行轨迹</h3>
+            </div>
+            <span class="trace__status">{{ timelineStatusText }}</span>
+          </div>
+
+          <!-- 节点流 -->
+          <div v-if="orderedSteps.length" class="trace__body">
+            <div
+              v-for="(step, i) in orderedSteps"
+              :key="step.id"
+              :id="`node-${step.name}`"
+              class="trace-row"
+              :class="`trace-row--${NODE_META[step.name]?.phase}`"
+            >
+              <div class="trace-row__gut">
+                <span class="trace-row__idx">
+                  {{ String(NODE_META[step.name]?.idx ?? i + 1).padStart(2, '0') }}
+                </span>
+                <span
+                  v-if="i < orderedSteps.length - 1"
+                  class="trace-row__line"
+                  aria-hidden="true"
+                ></span>
+              </div>
+              <div class="trace-row__card">
+                <component
+                  v-if="NODE_COMPONENTS[step.name]"
+                  :is="NODE_COMPONENTS[step.name]"
+                  :name="step.name"
+                  :content="step.content"
+                  :data="step.data"
+                  :status="step.status"
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- 人工输入面板 -->
+          <div v-if="awaitingConfirmation" class="human-panel">
+            <div class="human-panel__head">
+              <div class="human-panel__icon">
+                <el-icon><UserFilled /></el-icon>
+              </div>
+              <div>
+                <h3>需要人工输入</h3>
+                <p>请填写确认结果和反馈，提交后会继续执行后续节点。</p>
+              </div>
+            </div>
+            <div class="human-panel__field">
+              <span class="human-panel__label">确认结果</span>
+              <el-radio-group v-model="confirmationApproved">
+                <el-radio :value="true">确认继续</el-radio>
+                <el-radio :value="false">取消执行</el-radio>
+              </el-radio-group>
+            </div>
+            <div class="human-panel__field">
+              <span class="human-panel__label">反馈内容</span>
+              <el-input
+                v-model="confirmationFeedback"
+                type="textarea"
+                :rows="3"
+                resize="none"
+                placeholder="请输入反馈内容"
+              />
+            </div>
+            <el-button type="primary" :loading="isRunning" @click="submitConfirmation">
+              提交人工输入
+            </el-button>
+          </div>
+
+          <!-- 空状态 -->
+          <div v-else-if="!orderedSteps.length" class="empty">
+            <div class="empty__orb">
+              <el-icon><Cpu /></el-icon>
+              <span class="empty__ring"></span>
+            </div>
+            <div class="empty__title">Awaiting Pipeline</div>
+            <div class="empty__desc">
+              选择示例问题或输入自定义需求，点击 <strong>Run Pipeline</strong> 即可观察 13 个节点的实时执行轨迹。
+            </div>
+            <div class="empty__phases">
+              <span class="empty__phase empty__phase--cyan">Retrieval</span>
+              <span class="empty__phase empty__phase--violet">Planning</span>
+              <span class="empty__phase empty__phase--amber">Execution</span>
+              <span class="empty__phase empty__phase--emerald">Output</span>
+            </div>
+          </div>
         </div>
-        <div class="empty-state__steps">
-          <span>召回</span>
-          <span>规划</span>
-          <span>执行</span>
-          <span>报告</span>
+      </section>
+
+      <!-- ====== 右 Side：DAG MiniMap + Metrics ====== -->
+      <aside class="side">
+        <div class="metric-grid">
+          <div class="metric metric--primary">
+            <span class="metric__label">PROGRESS</span>
+            <strong class="metric__value">{{ progressPercentage }}<span>%</span></strong>
+            <div class="metric__bar">
+              <span :style="{ width: `${progressPercentage}%` }"></span>
+            </div>
+          </div>
+          <div class="metric">
+            <span class="metric__label">TRIGGERED</span>
+            <strong class="metric__value">{{ orderedSteps.length }}</strong>
+          </div>
+          <div class="metric">
+            <span class="metric__label">DONE</span>
+            <strong class="metric__value">{{ completedStepCount }}</strong>
+          </div>
         </div>
-      </div>
-    </section>
+
+        <!-- 阶段统计条 -->
+        <div class="phase-bars">
+          <div class="phase-bars__head">
+            <span class="phase-bars__label">PHASE BREAKDOWN</span>
+          </div>
+          <template v-for="phase in (['recall', 'plan', 'exec', 'output'] as const)" :key="phase">
+            <div class="phase-bar" :class="`phase-bar--${phase}`">
+              <span class="phase-bar__name">
+                {{ phase === 'recall' ? 'Retrieval' : phase === 'plan' ? 'Planning' : phase === 'exec' ? 'Execution' : 'Output' }}
+              </span>
+              <span class="phase-bar__nums">
+                {{ orderedSteps.filter(s => NODE_META[s.name]?.phase === phase && s.status === 'success').length }}
+                /
+                {{ DATA_AGENT_NODE_ORDER.filter(n => NODE_META[n]?.phase === phase).length }}
+              </span>
+              <div class="phase-bar__track">
+                <span
+                  :style="{
+                    width: `${
+                      (orderedSteps.filter(s => NODE_META[s.name]?.phase === phase && s.status === 'success').length /
+                        Math.max(1, DATA_AGENT_NODE_ORDER.filter(n => NODE_META[n]?.phase === phase).length)) * 100
+                    }%`,
+                  }"
+                ></span>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <!-- DAG 缩略图 -->
+        <div class="minimap">
+          <div class="minimap__head">
+            <span class="minimap__label">DAG MINI-MAP</span>
+            <span class="minimap__legend">
+              <span class="minimap__lg minimap__lg--idle"></span>idle
+              <span class="minimap__lg minimap__lg--run"></span>running
+              <span class="minimap__lg minimap__lg--ok"></span>done
+            </span>
+          </div>
+          <svg viewBox="0 0 200 320" class="minimap__svg">
+            <!-- Phase I -->
+            <rect x="60" y="6" width="80" height="76" rx="6" fill="rgba(34,211,238,0.06)" stroke="rgba(34,211,238,0.4)" stroke-width="0.6" />
+            <text x="100" y="18" class="mm-phase mm-phase--recall">RETRIEVAL</text>
+
+            <rect
+              v-for="(node, i) in [DATA_AGENT_GRAPH_NODE.EVIDENCE_RECALL, DATA_AGENT_GRAPH_NODE.SCHEMA_RECALL, DATA_AGENT_GRAPH_NODE.TABLE_RELATION]"
+              :key="`r-${i}`"
+              :x="70" :y="24 + i * 18" width="60" height="14" rx="3"
+              :class="['mm-node', `mm-node--${stepStatusMap[node]}`, { 'mm-node--active': activeNode === node }]"
+            />
+            <text v-for="(node, i) in ['Evidence', 'Schema', 'Relation']" :key="`rt-${i}`" :x="100" :y="34 + i * 18" class="mm-text">
+              {{ node }}
+            </text>
+
+            <!-- Phase II -->
+            <rect x="60" y="92" width="80" height="76" rx="6" fill="rgba(167,139,250,0.06)" stroke="rgba(167,139,250,0.4)" stroke-width="0.6" />
+            <text x="100" y="104" class="mm-phase mm-phase--plan">PLANNING</text>
+
+            <rect
+              v-for="(node, i) in [DATA_AGENT_GRAPH_NODE.FEASIBILITY_ASSESSMENT, DATA_AGENT_GRAPH_NODE.PLANNER, DATA_AGENT_GRAPH_NODE.HUMAN_FEEDBACK]"
+              :key="`p-${i}`"
+              :x="70" :y="110 + i * 18" width="60" height="14" rx="3"
+              :class="['mm-node', `mm-node--${stepStatusMap[node]}`, { 'mm-node--active': activeNode === node }]"
+            />
+            <text v-for="(node, i) in ['Feasibility', 'Planner', 'Human']" :key="`pt-${i}`" :x="100" :y="120 + i * 18" class="mm-text">
+              {{ node }}
+            </text>
+
+            <!-- Phase III -->
+            <rect x="6" y="178" width="188" height="100" rx="6" fill="rgba(251,191,36,0.06)" stroke="rgba(251,191,36,0.4)" stroke-width="0.6" />
+            <text x="100" y="190" class="mm-phase mm-phase--exec">EXECUTION</text>
+
+            <!-- Dispatch -->
+            <rect :x="70" :y="196" width="60" height="14" rx="3"
+              :class="['mm-node', `mm-node--${stepStatusMap[DATA_AGENT_GRAPH_NODE.PLAN_EXECUTION]}`, { 'mm-node--active': activeNode === DATA_AGENT_GRAPH_NODE.PLAN_EXECUTION }]"
+            />
+            <text x="100" y="206" class="mm-text">Dispatch</text>
+
+            <!-- SQL Branch -->
+            <rect :x="14" :y="220" width="50" height="12" rx="3"
+              :class="['mm-node', `mm-node--${stepStatusMap[DATA_AGENT_GRAPH_NODE.SQL_GENERATION]}`, { 'mm-node--active': activeNode === DATA_AGENT_GRAPH_NODE.SQL_GENERATION }]"
+            />
+            <text x="39" y="229" class="mm-text mm-text--sm">SQL Gen</text>
+            <rect :x="14" :y="236" width="50" height="12" rx="3"
+              :class="['mm-node', `mm-node--${stepStatusMap[DATA_AGENT_GRAPH_NODE.SQL_EXECUTION]}`, { 'mm-node--active': activeNode === DATA_AGENT_GRAPH_NODE.SQL_EXECUTION }]"
+            />
+            <text x="39" y="245" class="mm-text mm-text--sm">SQL Exec</text>
+
+            <!-- Python Branch -->
+            <rect :x="76" :y="220" width="48" height="12" rx="3"
+              :class="['mm-node', `mm-node--${stepStatusMap[DATA_AGENT_GRAPH_NODE.PYTHON_GENERATION]}`, { 'mm-node--active': activeNode === DATA_AGENT_GRAPH_NODE.PYTHON_GENERATION }]"
+            />
+            <text x="100" y="229" class="mm-text mm-text--sm">Py Gen</text>
+            <rect :x="76" :y="236" width="48" height="12" rx="3"
+              :class="['mm-node', `mm-node--${stepStatusMap[DATA_AGENT_GRAPH_NODE.PYTHON_EXECUTION]}`, { 'mm-node--active': activeNode === DATA_AGENT_GRAPH_NODE.PYTHON_EXECUTION }]"
+            />
+            <text x="100" y="245" class="mm-text mm-text--sm">Py Exec</text>
+            <rect :x="76" :y="252" width="48" height="12" rx="3"
+              :class="['mm-node', `mm-node--${stepStatusMap[DATA_AGENT_GRAPH_NODE.PYTHON_ANALYSIS]}`, { 'mm-node--active': activeNode === DATA_AGENT_GRAPH_NODE.PYTHON_ANALYSIS }]"
+            />
+            <text x="100" y="261" class="mm-text mm-text--sm">Py Analyze</text>
+
+            <!-- Report Branch -->
+            <rect :x="136" :y="220" width="50" height="12" rx="3"
+              :class="['mm-node mm-node--out', `mm-node--${stepStatusMap[DATA_AGENT_GRAPH_NODE.REPORT_GENERATION]}`, { 'mm-node--active': activeNode === DATA_AGENT_GRAPH_NODE.REPORT_GENERATION }]"
+            />
+            <text x="161" y="229" class="mm-text mm-text--sm">Report</text>
+
+            <!-- 简化连线 -->
+            <line x1="100" y1="38" x2="100" y2="92" stroke="rgba(148,163,184,0.32)" stroke-width="0.6" stroke-dasharray="2 2" />
+            <line x1="100" y1="124" x2="100" y2="178" stroke="rgba(148,163,184,0.32)" stroke-width="0.6" stroke-dasharray="2 2" />
+            <line x1="100" y1="210" x2="100" y2="220" stroke="rgba(148,163,184,0.32)" stroke-width="0.6" />
+            <line x1="100" y1="216" x2="40" y2="220" stroke="rgba(148,163,184,0.32)" stroke-width="0.6" />
+            <line x1="100" y1="216" x2="160" y2="220" stroke="rgba(148,163,184,0.32)" stroke-width="0.6" />
+          </svg>
+        </div>
+
+        <div class="ws-footer">
+          <span>Built with Vue · Element Plus</span>
+        </div>
+      </aside>
+    </div>
   </main>
 </template>
 
 <style scoped>
-.page-shell {
+/* ============= 整体布局 ============= */
+.ws {
   position: relative;
   min-height: 100vh;
-  padding: 18px clamp(16px, 2.5vw, 34px) 58px;
-  overflow: hidden;
-  background:
-    radial-gradient(circle at 8% 0%, rgba(249, 115, 22, 0.16), transparent 30%),
-    radial-gradient(circle at 92% 6%, rgba(37, 99, 235, 0.14), transparent 28%),
-    linear-gradient(180deg, rgba(255, 251, 235, 0.92) 0%, rgba(248, 250, 252, 0.96) 48%, rgba(239, 246, 255, 0.96) 100%);
+  display: flex;
+  flex-direction: column;
+  padding: 14px clamp(14px, 2vw, 26px) 18px;
 }
 
-.page-shell::before,
-.page-shell::after {
-  position: absolute;
-  z-index: 0;
-  pointer-events: none;
-  content: '';
+/* ============= AppBar ============= */
+.appbar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 16px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+  backdrop-filter: blur(22px);
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 14px;
+}
+
+.appbar__l {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  transition: opacity 0.18s;
+}
+
+.appbar__l:hover {
+  opacity: 0.85;
+}
+
+.appbar__logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  color: #ffffff;
+  background: linear-gradient(135deg, #6366f1, #06b6d4);
+  box-shadow: 0 8px 22px rgba(99, 102, 241, 0.5);
+}
+
+.appbar__brand {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.appbar__name {
+  color: var(--text-1);
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: -0.012em;
+}
+
+.appbar__sub {
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.appbar__c {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border: 1px solid var(--line-2);
   border-radius: 999px;
+  background: rgba(2, 6, 23, 0.6);
+  font-family: 'SF Mono', ui-monospace, monospace;
+  font-size: 12px;
 }
 
-.page-shell::before {
-  top: 160px;
-  left: -120px;
-  width: 280px;
-  height: 280px;
-  background: rgba(249, 115, 22, 0.1);
-  filter: blur(4px);
+.appbar__crumb {
+  color: var(--text-2);
+  font-weight: 700;
 }
 
-.page-shell::after {
-  right: -160px;
-  bottom: 8%;
-  width: 360px;
-  height: 360px;
-  background: rgba(37, 99, 235, 0.1);
-  filter: blur(4px);
+.appbar__crumb--muted { color: var(--text-3); }
+.appbar__crumb--accent { color: var(--color-accent); }
+
+.appbar__crumb-sep {
+  color: var(--text-3);
+  opacity: 0.6;
 }
 
-/* 导航栏 */
-.workspace-nav,
-.workspace-hero,
-.input-panel,
-.timeline-panel {
-  position: relative;
-  z-index: 1;
-  max-width: 1180px;
-  margin-right: auto;
-  margin-left: auto;
+.appbar__r {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: flex-end;
 }
 
-.workspace-nav {
+.appbar__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-1);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #64748b;
+  box-shadow: 0 0 0 3px rgba(100, 116, 139, 0.18);
+}
+
+.dot--ok {
+  background: #34d399;
+  box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.22);
+}
+
+.dot--run {
+  background: #fbbf24;
+  box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.24);
+  animation: dot-pulse 1.4s infinite;
+}
+
+@keyframes dot-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.55; transform: scale(0.78); }
+}
+
+.appbar__home {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-1);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+
+.appbar__home:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(129, 140, 248, 0.5);
+}
+
+/* ============= 三栏 Grid ============= */
+.grid {
+  display: grid;
+  grid-template-columns: 264px minmax(0, 1fr) 320px;
+  gap: 14px;
+  flex: 1;
+  min-height: 0;
+}
+
+/* ============= 左 Rail ============= */
+.rail {
+  position: sticky;
+  top: 14px;
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 32px);
+  padding: 16px 12px 14px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-xl);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01));
+  backdrop-filter: blur(22px);
+  box-shadow: var(--shadow-sm);
+}
+
+.rail__head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 22px;
-  padding: 12px 14px;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.7);
-  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.07);
-  backdrop-filter: blur(20px);
+  padding: 0 6px 10px;
+  border-bottom: 1px dashed var(--line-2);
+  margin-bottom: 10px;
 }
 
-.workspace-nav__left {
+.rail__label {
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.rail__count {
+  font-family: 'SF Mono', ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text-2);
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.rail__list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.rail-item {
+  --rail-c: var(--text-3);
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text-2);
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.rail-item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.rail-item:not(:disabled):hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--line-2);
+}
+
+.rail-item--active {
+  background: linear-gradient(90deg, var(--rail-soft), transparent 80%);
+  border-color: var(--rail-c) !important;
+  box-shadow: 0 0 0 1px var(--rail-c) inset;
+}
+
+.rail-item--recall { --rail-c: #22d3ee; --rail-soft: rgba(34, 211, 238, 0.12); }
+.rail-item--plan   { --rail-c: #a78bfa; --rail-soft: rgba(167, 139, 250, 0.12); }
+.rail-item--exec   { --rail-c: #fbbf24; --rail-soft: rgba(251, 191, 36, 0.12); }
+.rail-item--output { --rail-c: #34d399; --rail-soft: rgba(52, 211, 153, 0.14); }
+
+.rail-item__idx {
+  font-family: 'SF Mono', ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--text-3);
+  text-align: center;
+}
+
+.rail-item--active .rail-item__idx,
+.rail-item--success .rail-item__idx {
+  color: var(--rail-c);
+}
+
+.rail-item__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.rail-item__name {
+  color: var(--text-1);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rail-item__phase {
+  color: var(--text-3);
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.rail-item__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(148, 163, 184, 0.3);
+  flex-shrink: 0;
+}
+
+.rail-item--pending .rail-item__dot {
+  background: var(--rail-c);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.06);
+  animation: dot-pulse 1.4s infinite;
+}
+
+.rail-item--success .rail-item__dot {
+  background: #34d399;
+  box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.18);
+}
+
+.rail__foot {
+  margin-top: 10px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line-2);
+}
+
+.rail-progress {
   display: flex;
   align-items: center;
-  gap: 11px;
-  color: #0f172a;
-  cursor: pointer;
-  transition: color 0.2s, transform 0.2s;
+  gap: 10px;
 }
 
-.workspace-nav__left:hover {
-  color: #f97316;
+.rail-progress__bar {
+  flex: 1;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+.rail-progress__bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #818cf8, #22d3ee, #34d399);
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.45);
+  transition: width 0.4s ease;
+}
+
+.rail-progress__num {
+  font-family: 'SF Mono', ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text-1);
+  min-width: 36px;
+  text-align: right;
+}
+
+/* ============= 中央 Stage ============= */
+.stage {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+/* ----- Composer ----- */
+.composer {
+  padding: 22px 24px 20px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-xl);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.015)),
+    radial-gradient(700px 220px at 100% 0%, rgba(99, 102, 241, 0.16), transparent 60%);
+  backdrop-filter: blur(22px);
+  box-shadow: var(--shadow-sm);
+}
+
+.composer__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18px;
+  margin-bottom: 14px;
+}
+
+.composer__eyebrow {
+  display: inline-block;
+  margin-bottom: 6px;
+  padding: 3px 9px;
+  border: 1px solid rgba(34, 211, 238, 0.32);
+  border-radius: 6px;
+  background: rgba(34, 211, 238, 0.1);
+  color: #67e8f9;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.composer__title h2 {
+  margin: 0;
+  color: var(--text-1);
+  font-size: clamp(22px, 2.4vw, 28px);
+  font-weight: 900;
+  letter-spacing: -0.025em;
+  line-height: 1.18;
+}
+
+.composer__db {
+  flex-shrink: 0;
+  width: 220px;
+}
+
+.composer__db-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+
+.composer__chips {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.composer__chips-label {
+  color: var(--text-3);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  margin-right: 4px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: min(100%, 540px);
+  padding: 7px 13px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-2);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+
+.chip:hover {
+  background: rgba(99, 102, 241, 0.12);
+  border-color: rgba(129, 140, 248, 0.5);
+  color: var(--text-1);
   transform: translateY(-1px);
 }
 
-.workspace-nav__left span:not(.workspace-nav__logo) {
-  display: block;
-  font-size: 16px;
+.chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 460px;
+}
+
+.composer__box {
+  display: grid;
+  gap: 12px;
+}
+
+.composer__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.composer__hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.composer__hint kbd {
+  padding: 2px 7px;
+  border: 1px solid var(--line-2);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-2);
+  font-family: 'SF Mono', ui-monospace, monospace;
+  font-size: 10px;
+}
+
+.composer__sep {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--text-3);
+  opacity: 0.5;
+}
+
+.composer :deep(.el-button) {
+  height: 44px;
+  padding: 0 20px;
+  border-radius: 12px;
+  font-weight: 800;
+}
+
+/* ----- Trace ----- */
+.trace {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 22px 22px 20px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-xl);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.015));
+  backdrop-filter: blur(22px);
+  box-shadow: var(--shadow-sm);
+  min-height: 480px;
+}
+
+.trace__head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px dashed var(--line-2);
+}
+
+.trace__eyebrow {
+  display: inline-block;
+  margin-bottom: 4px;
+  color: var(--color-accent);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+}
+
+.trace__title h3 {
+  margin: 0;
+  color: var(--text-1);
+  font-size: 20px;
   font-weight: 900;
   letter-spacing: -0.02em;
 }
 
-.workspace-nav__left small {
-  display: block;
-  margin-top: 2px;
-  color: #64748b;
-  font-size: 12px;
-  font-weight: 600;
+.trace__status {
+  padding: 7px 13px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-1);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
 }
 
-.workspace-nav__logo {
+.trace__body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.trace-row {
+  --row-c: var(--color-primary);
+  position: relative;
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  gap: 12px;
+  padding-bottom: 18px;
+}
+
+.trace-row--recall { --row-c: #22d3ee; }
+.trace-row--plan   { --row-c: #a78bfa; }
+.trace-row--exec   { --row-c: #fbbf24; }
+.trace-row--output { --row-c: #34d399; }
+
+.trace-row__gut {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.trace-row__idx {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 38px;
-  height: 38px;
-  border-radius: 15px;
-  color: #ffffff;
-  background: linear-gradient(135deg, #f97316, #2563eb);
-  box-shadow: 0 12px 28px rgba(249, 115, 22, 0.22);
-}
-
-.workspace-nav__status {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 13px;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 999px;
-  color: #64748b;
-  background: rgba(255, 255, 255, 0.72);
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.status-dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: #94a3b8;
-  box-shadow: 0 0 0 4px rgba(148, 163, 184, 0.12);
-}
-
-.status-dot--ready {
-  background: #22c55e;
-  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.14);
-}
-
-.status-dot--active {
-  background: #22c55e;
-  animation: pulse 1.5s infinite;
-}
-
-@keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-    box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.14);
-  }
-
-  50% {
-    opacity: 0.55;
-    box-shadow: 0 0 0 8px rgba(34, 197, 94, 0.08);
-  }
-}
-
-.workspace-hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 26px;
-  align-items: end;
-  margin-bottom: 22px;
-  padding: 26px;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 32px;
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.88), rgba(248, 250, 252, 0.74)),
-    radial-gradient(circle at top right, rgba(249, 115, 22, 0.1), transparent 30%);
-  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.1);
-  backdrop-filter: blur(22px);
-}
-
-.workspace-hero__eyebrow {
-  display: inline-flex;
-  margin-bottom: 10px;
-  padding: 7px 12px;
-  border: 1px solid rgba(249, 115, 22, 0.2);
-  border-radius: 999px;
-  color: #ea580c;
-  background: rgba(255, 247, 237, 0.72);
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border: 1.5px solid var(--row-c);
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.7);
+  box-shadow: 0 0 0 4px rgba(15, 23, 42, 0.6),
+              0 0 18px color-mix(in srgb, var(--row-c) 35%, transparent);
+  color: var(--row-c);
+  font-family: 'SF Mono', ui-monospace, monospace;
   font-size: 11px;
   font-weight: 900;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: -0.02em;
+  z-index: 1;
 }
 
-.workspace-hero h1 {
-  max-width: 760px;
-  margin: 0;
-  color: #0f172a;
-  font-size: clamp(30px, 4vw, 52px);
-  font-weight: 950;
-  line-height: 1.08;
-  letter-spacing: -0.055em;
+.trace-row__line {
+  position: absolute;
+  top: 36px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 1.5px;
+  height: calc(100% - 36px);
+  background: linear-gradient(180deg, var(--row-c), transparent);
+  opacity: 0.45;
 }
 
-.workspace-hero p {
-  max-width: 720px;
-  margin: 14px 0 0;
-  color: #64748b;
-  font-size: 15px;
-  line-height: 1.8;
+.trace-row__card {
+  min-width: 0;
 }
 
-.workspace-hero__stats {
-  display: grid;
-  grid-template-columns: repeat(3, 112px);
-  gap: 10px;
+/* ----- Human Panel ----- */
+.human-panel {
+  margin-top: 18px;
+  padding: 22px;
+  border: 1px solid rgba(167, 139, 250, 0.32);
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(420px 200px at 0% 0%, rgba(167, 139, 250, 0.18), transparent 60%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.015));
+  backdrop-filter: blur(20px);
+  box-shadow: 0 16px 48px rgba(124, 58, 237, 0.18);
 }
 
-.workspace-stat {
-  padding: 15px;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 22px;
-  background: rgba(255, 255, 255, 0.72);
-  text-align: center;
-  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.05);
-}
-
-.workspace-stat strong,
-.workspace-stat span {
-  display: block;
-}
-
-.workspace-stat strong {
-  color: #0f172a;
-  font-size: 26px;
-  line-height: 1;
-}
-
-.workspace-stat span {
-  margin-top: 8px;
-  color: #64748b;
-  font-size: 12px;
-  font-weight: 800;
-}
-
-/* 输入区域 */
-.input-panel {
-  margin-bottom: 24px;
-  padding: 24px;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 30px;
-  background: rgba(255, 255, 255, 0.78);
-  box-shadow: 0 20px 58px rgba(15, 23, 42, 0.08);
-  backdrop-filter: blur(18px);
-}
-
-.input-panel__topline {
+.human-panel__head {
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
-  gap: 20px;
-  margin-bottom: 18px;
-}
-
-.input-panel__topline h2 {
-  margin: 0;
-  color: #0f172a;
-  font-size: 22px;
-  font-weight: 900;
-  letter-spacing: -0.03em;
-}
-
-.input-panel__topline p {
-  margin: 6px 0 0;
-  color: #64748b;
-  font-size: 13px;
-}
-
-.input-panel__db {
-  display: grid;
-  flex-shrink: 0;
-  gap: 7px;
-  width: 236px;
-}
-
-.input-panel__db span {
-  color: #64748b;
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.input-panel__examples {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 9px;
+  gap: 12px;
   margin-bottom: 16px;
 }
 
-.input-panel__examples-label {
-  color: #94a3b8;
-  font-size: 12px;
-  font-weight: 900;
-}
-
-.example-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  max-width: min(100%, 520px);
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  border-radius: 999px;
-  padding: 8px 13px;
-  color: #475569;
-  background: rgba(248, 250, 252, 0.82);
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
-  font-size: 12px;
-  line-height: 1.4;
-  cursor: pointer;
-  transition:
-    transform 0.2s ease,
-    border-color 0.2s ease,
-    background 0.2s ease,
-    color 0.2s ease;
-}
-
-.example-chip:hover {
-  transform: translateY(-1px);
-  border-color: rgba(249, 115, 22, 0.28);
-  color: #ea580c;
-  background: rgba(255, 247, 237, 0.9);
-}
-
-.input-panel__composer {
-  display: grid;
-  gap: 14px;
-}
-
-.input-panel__textarea {
-  width: 100%;
-}
-
-.input-panel__actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-}
-
-.input-panel__actions span {
-  color: #64748b;
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.input-panel__btn {
-  min-width: 148px;
-  height: 48px;
-  padding: 0 24px;
-}
-
-/* 时间线 */
-.timeline-panel {
-  padding: 24px;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 30px;
-  background: rgba(255, 255, 255, 0.76);
-  box-shadow: 0 20px 58px rgba(15, 23, 42, 0.08);
-  backdrop-filter: blur(18px);
-}
-
-.timeline-panel__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 18px;
-}
-
-.timeline-panel__eyebrow {
-  display: inline-flex;
-  margin-bottom: 8px;
-  color: #ea580c;
-  font-size: 11px;
-  font-weight: 900;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.timeline-panel__header h2 {
-  margin: 0;
-  color: #0f172a;
-  font-size: 24px;
-  font-weight: 950;
-  letter-spacing: -0.04em;
-}
-
-.timeline-panel__header p {
-  margin: 6px 0 0;
-  color: #64748b;
-  font-size: 13px;
-  line-height: 1.7;
-}
-
-.timeline-panel__status {
-  flex-shrink: 0;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 999px;
-  padding: 9px 14px;
-  color: #334155;
-  background: rgba(248, 250, 252, 0.86);
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
-  font-size: 12px;
-  font-weight: 900;
-}
-
-.progress-card {
-  margin-bottom: 18px;
-  padding: 16px;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 22px;
-  background:
-    linear-gradient(135deg, rgba(255, 247, 237, 0.72), rgba(239, 246, 255, 0.64)),
-    rgba(255, 255, 255, 0.72);
-}
-
-.progress-card__info {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 10px;
-  color: #64748b;
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.progress-card__info strong {
-  color: #0f172a;
-}
-
-.progress-card__bar {
-  overflow: hidden;
-  height: 10px;
-  border-radius: 999px;
-  background: rgba(226, 232, 240, 0.88);
-}
-
-.progress-card__bar span {
-  display: block;
-  min-width: 0;
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, #f97316, #2563eb);
-  box-shadow: 0 10px 24px rgba(249, 115, 22, 0.24);
-  transition: width 0.35s ease;
-}
-
-.timeline-panel__list {
-  display: grid;
-  gap: 18px;
-}
-
-/* 人工输入面板 */
-.human-input-panel {
-  margin-top: 18px;
-  border: 1px solid rgba(168, 85, 247, 0.22);
-  border-radius: 24px;
-  padding: 18px;
-  background:
-    radial-gradient(circle at top left, rgba(168, 85, 247, 0.12), transparent 34%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(250, 245, 255, 0.9));
-  box-shadow: 0 18px 44px rgba(88, 28, 135, 0.08);
-}
-
-.human-input-panel__header {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-}
-
-.human-input-panel__icon {
+.human-panel__icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   width: 42px;
   height: 42px;
-  border-radius: 16px;
-  color: #9333ea;
-  background: #faf5ff;
-  box-shadow: 0 10px 24px rgba(147, 51, 234, 0.12);
+  border-radius: 12px;
+  border: 1px solid rgba(167, 139, 250, 0.4);
+  background: rgba(167, 139, 250, 0.16);
+  color: #c4b5fd;
 }
 
-.human-input-panel h3 {
+.human-panel h3 {
   margin: 0;
-  color: #0f172a;
-  font-size: 18px;
+  color: var(--text-1);
+  font-size: 17px;
   font-weight: 900;
 }
 
-.human-input-panel p {
-  margin: 6px 0 0;
-  color: #64748b;
+.human-panel p {
+  margin: 4px 0 0;
+  color: var(--text-2);
+  font-size: 13px;
   line-height: 1.7;
 }
 
-.human-input-panel__field {
-  margin: 16px 0;
+.human-panel__field {
+  margin-bottom: 14px;
 }
 
-.human-input-panel__label {
+.human-panel__label {
+  display: block;
   margin-bottom: 8px;
-  color: #334155;
-  font-size: 13px;
+  color: var(--text-2);
+  font-size: 12px;
   font-weight: 800;
+  letter-spacing: 0.04em;
 }
 
-/* 空状态 */
-.empty-state {
-  padding: 56px 20px;
-  border: 1px dashed rgba(100, 116, 139, 0.28);
-  border-radius: 24px;
+/* ----- Empty ----- */
+.empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
   text-align: center;
-  background:
-    radial-gradient(circle at center top, rgba(249, 115, 22, 0.08), transparent 34%),
-    rgba(248, 250, 252, 0.62);
+  border: 1px dashed var(--line-2);
+  border-radius: var(--radius-lg);
+  background: radial-gradient(circle at 50% 100%, rgba(99, 102, 241, 0.08), transparent 60%);
 }
 
-.empty-state__orb {
+.empty__orb {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 78px;
-  height: 78px;
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  width: 84px;
+  height: 84px;
+  margin-bottom: 18px;
+  border: 1px solid rgba(129, 140, 248, 0.35);
+  border-radius: 22px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.18), rgba(34, 211, 238, 0.1));
+  color: #a5b4fc;
+  font-size: 30px;
+  box-shadow: 0 14px 40px rgba(99, 102, 241, 0.32);
+}
+
+.empty__ring {
+  position: absolute;
+  inset: -8px;
+  border: 1px dashed rgba(129, 140, 248, 0.45);
   border-radius: 28px;
-  margin-bottom: 16px;
-  background: rgba(255, 255, 255, 0.88);
-  box-shadow: 0 20px 46px rgba(15, 23, 42, 0.08);
+  animation: ring-spin 14s linear infinite;
 }
 
-.empty-state__icon {
-  color: #f97316;
-  font-size: 36px;
+@keyframes ring-spin {
+  to { transform: rotate(360deg); }
 }
 
-.empty-state__title {
-  color: #0f172a;
+.empty__title {
+  color: var(--text-1);
   font-size: 18px;
   font-weight: 900;
+  letter-spacing: -0.01em;
 }
 
-.empty-state__desc {
-  max-width: 520px;
-  margin: 8px auto 0;
-  color: #64748b;
+.empty__desc {
+  max-width: 460px;
+  margin: 8px 0 18px;
+  color: var(--text-2);
   font-size: 13px;
   line-height: 1.7;
 }
 
-.empty-state__steps {
-  display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 18px;
+.empty__desc strong {
+  color: var(--text-1);
+  font-weight: 800;
 }
 
-.empty-state__steps span {
-  padding: 6px 11px;
-  border: 1px solid rgba(148, 163, 184, 0.18);
+.empty__phases {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.empty__phase {
+  --c: var(--text-3);
+  padding: 5px 12px;
+  border: 1px solid var(--c);
   border-radius: 999px;
-  color: #64748b;
-  background: rgba(255, 255, 255, 0.8);
+  color: var(--c);
+  background: color-mix(in srgb, var(--c) 8%, transparent);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+.empty__phase--cyan    { --c: #22d3ee; }
+.empty__phase--violet  { --c: #a78bfa; }
+.empty__phase--amber   { --c: #fbbf24; }
+.empty__phase--emerald { --c: #34d399; }
+
+/* ============= 右 Side ============= */
+.side {
+  position: sticky;
+  top: 14px;
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  height: calc(100vh - 32px);
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto auto;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-xl);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.01));
+  backdrop-filter: blur(22px);
+  box-shadow: var(--shadow-sm);
+}
+
+.metric {
+  padding: 12px 14px;
+  border: 1px solid var(--line-2);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.metric--primary {
+  grid-column: 1 / -1;
+  background:
+    linear-gradient(135deg, rgba(99, 102, 241, 0.18), rgba(34, 211, 238, 0.1));
+  border-color: rgba(99, 102, 241, 0.4);
+}
+
+.metric__label {
+  display: block;
+  color: var(--text-3);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.metric__value {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-1);
+  font-size: 28px;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
+.metric__value span {
+  color: var(--text-2);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.metric__bar {
+  margin-top: 10px;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(2, 6, 23, 0.5);
+  overflow: hidden;
+}
+
+.metric__bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #818cf8, #22d3ee);
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.5);
+  transition: width 0.4s ease;
+}
+
+/* ----- Phase Bars ----- */
+.phase-bars {
+  padding: 16px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-xl);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01));
+  backdrop-filter: blur(22px);
+  box-shadow: var(--shadow-sm);
+}
+
+.phase-bars__head {
+  margin-bottom: 12px;
+}
+
+.phase-bars__label {
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.phase-bar {
+  --c: var(--text-3);
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 6px 8px;
+  margin-top: 10px;
+}
+
+.phase-bar--recall  { --c: #22d3ee; }
+.phase-bar--plan    { --c: #a78bfa; }
+.phase-bar--exec    { --c: #fbbf24; }
+.phase-bar--output  { --c: #34d399; }
+
+.phase-bar__name {
+  color: var(--text-1);
   font-size: 12px;
   font-weight: 800;
 }
 
-@media (max-width: 960px) {
-  .workspace-hero {
-    grid-template-columns: 1fr;
+.phase-bar__nums {
+  font-family: 'SF Mono', ui-monospace, monospace;
+  color: var(--c);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.phase-bar__track {
+  grid-column: 1 / -1;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+.phase-bar__track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--c);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--c) 50%, transparent);
+  transition: width 0.4s ease;
+}
+
+/* ----- MiniMap ----- */
+.minimap {
+  padding: 14px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-xl);
+  background: linear-gradient(180deg, rgba(2, 6, 23, 0.55), rgba(2, 6, 23, 0.3));
+  backdrop-filter: blur(22px);
+  box-shadow: var(--shadow-sm);
+}
+
+.minimap__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.minimap__label {
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.minimap__legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-3);
+  letter-spacing: 0.08em;
+}
+
+.minimap__lg {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  margin-left: 6px;
+}
+
+.minimap__lg--idle { background: rgba(148, 163, 184, 0.3); }
+.minimap__lg--run  { background: #fbbf24; }
+.minimap__lg--ok   { background: #34d399; }
+
+.minimap__svg {
+  width: 100%;
+  height: auto;
+}
+
+.mm-phase {
+  font-family: 'SF Mono', ui-monospace, monospace;
+  font-size: 6px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-anchor: middle;
+}
+
+.mm-phase--recall { fill: #67e8f9; }
+.mm-phase--plan   { fill: #c4b5fd; }
+.mm-phase--exec   { fill: #fcd34d; }
+
+.mm-node {
+  fill: rgba(15, 23, 42, 0.8);
+  stroke: rgba(148, 163, 184, 0.32);
+  stroke-width: 0.5;
+  transition: all 0.3s;
+}
+
+.mm-node--pending {
+  fill: rgba(251, 191, 36, 0.2);
+  stroke: #fbbf24;
+  stroke-width: 0.7;
+}
+
+.mm-node--success {
+  fill: rgba(52, 211, 153, 0.2);
+  stroke: #34d399;
+  stroke-width: 0.7;
+}
+
+.mm-node--active {
+  filter: drop-shadow(0 0 4px currentColor);
+}
+
+.mm-text {
+  fill: var(--text-2);
+  font-family: 'SF Mono', ui-monospace, monospace;
+  font-size: 5.5px;
+  font-weight: 700;
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+.mm-text--sm { font-size: 5px; }
+
+.ws-footer {
+  margin-top: auto;
+  padding-top: 4px;
+  text-align: center;
+  color: var(--text-3);
+  font-family: 'SF Mono', ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+
+/* ============= 响应式 ============= */
+@media (max-width: 1280px) {
+  .grid {
+    grid-template-columns: 240px minmax(0, 1fr) 280px;
+  }
+}
+
+@media (max-width: 1100px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
   }
 
-  .workspace-hero__stats {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+  .rail,
+  .side {
+    position: static;
+    height: auto;
+    max-height: 540px;
   }
 
-  .input-panel__topline {
+  .rail {
     flex-direction: column;
   }
 
-  .input-panel__db {
-    width: 100%;
+  .side {
+    overflow-y: visible;
+  }
+
+  .appbar {
+    grid-template-columns: 1fr auto;
+  }
+
+  .appbar__c {
+    display: none;
   }
 }
 
 @media (max-width: 720px) {
-  .page-shell {
-    padding: 14px 14px 44px;
+  .ws {
+    padding: 10px 10px 16px;
   }
 
-  .workspace-nav {
-    align-items: flex-start;
-    border-radius: 24px;
+  .composer__top {
+    flex-direction: column;
   }
 
-  .workspace-nav__left small {
-    display: none;
+  .composer__db {
+    width: 100%;
   }
 
-  .workspace-hero,
-  .input-panel,
-  .timeline-panel {
-    border-radius: 24px;
-    padding: 18px;
-  }
-
-  .workspace-hero__stats {
-    grid-template-columns: 1fr;
-  }
-
-  .input-panel__actions,
-  .timeline-panel__header {
+  .composer__actions {
     flex-direction: column;
     align-items: stretch;
   }
 
-  .input-panel__btn {
+  .composer :deep(.el-button) {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .chip {
     width: 100%;
   }
 
-  .example-chip {
-    width: 100%;
-    justify-content: flex-start;
-    border-radius: 18px;
+  .chip span {
+    max-width: none;
+  }
+
+  .trace-row {
+    grid-template-columns: 28px 1fr;
+    gap: 10px;
+  }
+
+  .trace-row__idx {
+    width: 26px;
+    height: 26px;
+    font-size: 10px;
   }
 }
 </style>
