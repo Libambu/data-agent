@@ -289,10 +289,10 @@ const phases = [
 .home {
   position: relative;
   min-height: 100vh;
-  padding: 18px clamp(18px, 3vw, 40px) 24px;
+  padding: 22px clamp(20px, 4vw, 56px) 28px;
   display: grid;
   grid-template-rows: auto 1fr auto;
-  gap: 22px;
+  gap: 26px;
 }
 
 /* ========== Topbar ========== */
@@ -401,10 +401,10 @@ const phases = [
 /* ========== Stage ========== */
 .stage {
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(440px, 0.95fr);
-  gap: clamp(28px, 3.5vw, 56px);
-  align-items: stretch;
-  max-width: 1480px;
+  grid-template-columns: minmax(0, 1.05fr) minmax(420px, 0.9fr);
+  gap: clamp(32px, 4vw, 64px);
+  align-items: start;
+  max-width: 1440px;
   width: 100%;
   margin: 0 auto;
   opacity: 0;
@@ -421,8 +421,10 @@ const phases = [
 .hero {
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  padding: clamp(8px, 2vw, 24px) 0;
+  justify-content: flex-start;
+  padding: clamp(24px, 4vw, 48px) 0 clamp(8px, 2vw, 20px);
+  max-width: 720px;
+  width: 100%;
 }
 
 .hero__pill {
@@ -456,13 +458,13 @@ const phases = [
 }
 
 .hero__title {
-  margin: 22px 0 0;
+  margin: 24px 0 0;
   display: flex;
   flex-direction: column;
-  font-size: clamp(48px, 6.4vw, 84px);
+  font-size: clamp(42px, 5vw, 68px);
   font-weight: 900;
-  line-height: 0.96;
-  letter-spacing: -0.045em;
+  line-height: 0.98;
+  letter-spacing: -0.04em;
   color: var(--text-1);
 }
 
@@ -476,9 +478,9 @@ const phases = [
 
 .hero__lead {
   max-width: 560px;
-  margin: 24px 0 0;
+  margin: 22px 0 0;
   color: var(--text-2);
-  font-size: 16px;
+  font-size: 15px;
   line-height: 1.75;
 }
 
@@ -532,15 +534,15 @@ const phases = [
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
-  margin-top: 32px;
+  margin-top: 36px;
 }
 
 .phase {
   position: relative;
   overflow: hidden;
-  padding: 16px 16px 14px;
+  padding: 16px 18px 14px;
   border: 1px solid var(--line-2);
-  border-radius: 18px;
+  border-radius: 16px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
   backdrop-filter: blur(14px);
   cursor: default;
@@ -579,7 +581,7 @@ const phases = [
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 
 .phase__idx {
@@ -604,6 +606,9 @@ const phases = [
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .phase__label {
@@ -613,13 +618,14 @@ const phases = [
   font-size: 16px;
   font-weight: 800;
   letter-spacing: -0.01em;
+  line-height: 1.25;
 }
 
 .phase__desc {
   position: relative;
   z-index: 1;
-  margin-top: 4px;
-  color: var(--text-2);
+  margin-top: 6px;
+  color: var(--text-3);
   font-size: 12.5px;
   line-height: 1.55;
 }
@@ -930,24 +936,44 @@ const phases = [
 }
 
 /* ========== 响应式 ========== */
-@media (max-width: 1180px) {
+@media (max-width: 1280px) {
+  .stage {
+    grid-template-columns: minmax(0, 1fr) minmax(380px, 0.78fr);
+    gap: 36px;
+  }
+
+  .hero__title {
+    font-size: clamp(40px, 5vw, 60px);
+  }
+}
+
+@media (max-width: 1080px) {
   .stage {
     grid-template-columns: 1fr;
-    gap: 28px;
+    gap: 32px;
+  }
+
+  .hero {
+    max-width: 760px;
+    margin: 0 auto;
+    text-align: left;
+    padding-top: 16px;
   }
 
   .arch-pane {
     min-height: 600px;
-  }
-
-  .phases {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    max-width: 760px;
+    width: 100%;
+    margin: 0 auto;
   }
 }
 
 @media (max-width: 860px) {
-  .topbar__nav .topbar__link,
   .topbar__divider {
+    display: none;
+  }
+
+  .topbar__nav .topbar__link {
     display: none;
   }
 
