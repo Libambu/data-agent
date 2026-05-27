@@ -53,7 +53,7 @@ const phases = [
       <div class="hero">
         <div class="hero__pill">
           <span class="hero__pill-dot"></span>
-          INTELLIGENT&nbsp;DATA&nbsp;ANALYSIS&nbsp;PLATFORM
+          <span class="hero__pill-text">Intelligent Data Agent</span>
         </div>
 
         <h1 class="hero__title">
@@ -62,10 +62,18 @@ const phases = [
         </h1>
 
         <p class="hero__lead">
-          基于多节点 AI Agent 协作，自动完成
-          <em>需求理解 → SQL/Python 生成 → 数据分析 → 报告输出</em>
-          全流程，节点级可观测、人工可介入。
+          基于多节点 AI Agent 协作，全流程自动化，节点级可观测、人工可介入。
         </p>
+
+        <ul class="hero__flow" aria-label="工作流程">
+          <li class="flow-chip">需求理解</li>
+          <li class="flow-arrow" aria-hidden="true">→</li>
+          <li class="flow-chip">SQL / Python 生成</li>
+          <li class="flow-arrow" aria-hidden="true">→</li>
+          <li class="flow-chip">数据分析</li>
+          <li class="flow-arrow" aria-hidden="true">→</li>
+          <li class="flow-chip">报告输出</li>
+        </ul>
 
         <div class="hero__cta">
           <el-button type="primary" size="large" @click="goToWorkspace">
@@ -73,7 +81,7 @@ const phases = [
             <span>Start Analyzing</span>
           </el-button>
           <button class="ghost-btn" @click="goToWorkspace">
-            <el-icon><VideoPlay /></el-icon>
+            <el-icon><CaretRight /></el-icon>
             <span>View Live Trace</span>
           </button>
         </div>
@@ -87,9 +95,10 @@ const phases = [
             :class="`phase--${phase.color}`"
             :style="{ animationDelay: `${idx * 80}ms` }"
           >
+            <span class="phase__rail" aria-hidden="true"></span>
             <div class="phase__head">
               <span class="phase__idx">{{ phase.key }}</span>
-              <span class="phase__name">Phase {{ phase.key }} · {{ phase.name }}</span>
+              <span class="phase__name">{{ phase.name }}</span>
             </div>
             <div class="phase__label">{{ phase.label }}</div>
             <div class="phase__desc">{{ phase.desc }}</div>
@@ -101,20 +110,17 @@ const phases = [
             <strong>4</strong>
             <span>Phases</span>
           </div>
-          <span class="stat-sep"></span>
           <div class="stat">
             <strong>13</strong>
             <span>Nodes</span>
           </div>
-          <span class="stat-sep"></span>
           <div class="stat">
-            <strong>SQL · Python</strong>
+            <strong>SQL · Py</strong>
             <span>Engines</span>
           </div>
-          <span class="stat-sep"></span>
           <div class="stat">
-            <strong>Streaming</strong>
-            <span>Realtime</span>
+            <strong>Live</strong>
+            <span>Streaming</span>
           </div>
         </div>
       </div>
@@ -297,6 +303,8 @@ const phases = [
 
 /* ========== Topbar ========== */
 .topbar {
+  position: relative;
+  z-index: 3;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -400,6 +408,8 @@ const phases = [
 
 /* ========== Stage ========== */
 .stage {
+  position: relative;
+  z-index: 1;
   display: grid;
   grid-template-columns: minmax(0, 1.05fr) minmax(420px, 0.9fr);
   gap: clamp(32px, 4vw, 64px);
@@ -419,10 +429,11 @@ const phases = [
 
 /* ========== Hero ========== */
 .hero {
+  position: relative;
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
-  padding: clamp(24px, 4vw, 48px) 0 clamp(8px, 2vw, 20px);
+  padding: clamp(20px, 3.4vw, 40px) 0 clamp(8px, 2vw, 20px);
   max-width: 720px;
   width: 100%;
 }
@@ -432,37 +443,49 @@ const phases = [
   align-items: center;
   gap: 8px;
   align-self: flex-start;
-  padding: 7px 14px 7px 12px;
-  border: 1px solid rgba(26, 115, 232, 0.24);
+  padding: 6px 14px 6px 10px;
+  border: 1px solid rgba(26, 115, 232, 0.22);
   border-radius: 999px;
-  background: rgba(26, 115, 232, 0.08);
+  background: rgba(26, 115, 232, 0.06);
   color: var(--color-primary);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.hero__pill-text {
+  font-family: 'Google Sans', 'Inter', system-ui, sans-serif;
 }
 
 .hero__pill-dot {
-  width: 7px;
-  height: 7px;
+  position: relative;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: var(--color-primary);
-  box-shadow: 0 0 0 4px rgba(26, 115, 232, 0.18);
+}
+
+.hero__pill-dot::after {
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  background: rgba(26, 115, 232, 0.22);
+  content: '';
   animation: pulse 1.6s infinite;
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.5; transform: scale(0.85); }
+  0%   { opacity: 0.5; transform: scale(0.6); }
+  100% { opacity: 0;   transform: scale(1.6); }
 }
 
 .hero__title {
-  margin: 24px 0 0;
+  margin: 20px 0 0;
   display: flex;
   flex-direction: column;
-  font-size: clamp(42px, 5vw, 68px);
+  font-size: clamp(40px, 4.6vw, 62px);
   font-weight: 700;
-  line-height: 1.04;
+  line-height: 1.05;
   letter-spacing: -0.035em;
   color: var(--text-1);
 }
@@ -476,31 +499,56 @@ const phases = [
 
 .hero__lead {
   max-width: 560px;
-  margin: 22px 0 0;
+  margin: 18px 0 0;
   color: var(--text-2);
   font-size: 15px;
-  line-height: 1.75;
+  line-height: 1.7;
 }
 
-.hero__lead em {
+/* ========== 流程胶囊 ========== */
+.hero__flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.flow-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 12px;
+  border: 1px solid rgba(26, 115, 232, 0.22);
+  border-radius: 999px;
+  background: rgba(26, 115, 232, 0.06);
   color: var(--color-primary);
-  font-style: normal;
+  font-size: 12.5px;
   font-weight: 600;
-  background: rgba(26, 115, 232, 0.08);
-  padding: 1px 8px;
-  border-radius: 6px;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.flow-arrow {
+  color: var(--text-3);
+  font-family: 'Roboto Mono', 'SF Mono', ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 500;
+  user-select: none;
 }
 
 .hero__cta {
   display: flex;
-  gap: 14px;
-  margin-top: 28px;
+  gap: 12px;
+  margin-top: 26px;
 }
 
 .hero__cta :deep(.el-button) {
-  height: 48px;
-  padding: 0 24px;
-  border-radius: 24px;
+  height: 44px;
+  padding: 0 22px;
+  border-radius: 22px;
   font-weight: 600;
 }
 
@@ -508,37 +556,42 @@ const phases = [
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  height: 48px;
-  padding: 0 22px;
+  height: 44px;
+  padding: 0 20px;
   border: 1px solid var(--line-strong);
-  border-radius: 24px;
+  border-radius: 22px;
   background: #ffffff;
   color: var(--color-primary);
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.18s, border-color 0.18s;
+  transition: background 0.18s, border-color 0.18s, box-shadow 0.18s;
+}
+
+.ghost-btn .el-icon {
+  font-size: 14px;
 }
 
 .ghost-btn:hover {
   background: rgba(26, 115, 232, 0.06);
   border-color: var(--color-primary);
+  box-shadow: 0 1px 3px rgba(26, 115, 232, 0.18);
 }
 
 /* ========== 阶段卡 ========== */
 .phases {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  margin-top: 36px;
+  gap: 14px;
+  margin-top: 32px;
 }
 
 .phase {
   position: relative;
   overflow: hidden;
-  padding: 16px 18px 14px;
+  padding: 18px 18px 16px 22px;
   border: 1px solid var(--line-2);
-  border-radius: 12px;
+  border-radius: 14px;
   background: #ffffff;
   cursor: default;
   opacity: 0;
@@ -552,13 +605,23 @@ const phases = [
   to   { opacity: 1; transform: none; }
 }
 
+.phase__rail {
+  position: absolute;
+  top: 14px;
+  bottom: 14px;
+  left: 10px;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--phase-c);
+  opacity: 0.85;
+}
+
 .phase::before {
   position: absolute;
   inset: 0;
   pointer-events: none;
   content: '';
-  background: linear-gradient(90deg, var(--phase-c), transparent 60%) top / 100% 3px no-repeat,
-              radial-gradient(260px 140px at 0% 0%, var(--phase-c-soft), transparent 60%);
+  background: radial-gradient(280px 160px at 0% 0%, var(--phase-c-soft), transparent 62%);
 }
 
 .phase:hover {
@@ -578,43 +641,44 @@ const phases = [
   z-index: 1;
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 10px;
+  gap: 10px;
+  margin-bottom: 8px;
 }
 
 .phase__idx {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 22px;
+  min-width: 26px;
   height: 22px;
-  padding: 0 6px;
-  border-radius: 6px;
+  padding: 0 8px;
+  border-radius: 999px;
   background: var(--phase-c-soft);
   color: var(--phase-c);
   font-family: 'Roboto Mono', 'SF Mono', ui-monospace, monospace;
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
 }
 
 .phase__name {
-  color: var(--text-3);
-  font-size: 11px;
+  color: var(--phase-c);
+  font-size: 10.5px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  opacity: 0.9;
 }
 
 .phase__label {
   position: relative;
   z-index: 1;
   color: var(--text-1);
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 17px;
+  font-weight: 700;
   letter-spacing: -0.01em;
   line-height: 1.3;
 }
@@ -630,38 +694,59 @@ const phases = [
 
 /* ========== 横向数据条 ========== */
 .hero__stats {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 18px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 0;
   margin-top: 28px;
-  padding-top: 24px;
-  border-top: 1px dashed var(--line-2);
+  padding: 16px 4px;
+  border: 1px solid var(--line-2);
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, #ffffff 0%, var(--bg-1) 100%);
+  box-shadow: var(--shadow-sm);
+}
+
+.stat {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 4px 18px;
+}
+
+.stat + .stat::before {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 0;
+  width: 1px;
+  background: var(--line-2);
+  content: '';
 }
 
 .stat strong {
   display: block;
   color: var(--text-1);
   font-size: 22px;
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: -0.02em;
-  line-height: 1;
+  line-height: 1.1;
+  background: linear-gradient(120deg, #4285f4 0%, #9b72cb 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .stat span {
   display: block;
-  margin-top: 4px;
+  margin-top: 6px;
   color: var(--text-3);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.10em;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-}
-
-.stat-sep {
-  width: 1px;
-  height: 28px;
-  background: var(--line-2);
 }
 
 /* ========== Arch Pane ========== */
@@ -986,7 +1071,12 @@ const phases = [
   }
 
   .hero__stats {
-    gap: 14px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    row-gap: 12px;
+  }
+
+  .stat:nth-child(3)::before {
+    display: none;
   }
 }
 
@@ -1009,8 +1099,8 @@ const phases = [
     grid-template-columns: 1fr;
   }
 
-  .stat-sep:nth-of-type(odd) {
-    display: none;
+  .hero__stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 </style>
