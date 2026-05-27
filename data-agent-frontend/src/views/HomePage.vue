@@ -139,43 +139,43 @@ const phases = [
           <svg viewBox="0 0 520 680" class="arch-svg" preserveAspectRatio="xMidYMid meet">
             <defs>
               <marker id="arr" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto">
-                <polygon points="0 0, 6 2.5, 0 5" fill="#cbd5e1" />
+                <polygon points="0 0, 6 2.5, 0 5" fill="#9aa0a6" />
               </marker>
               <marker id="arr-c" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto">
-                <polygon points="0 0, 6 2.5, 0 5" fill="#94a3b8" />
+                <polygon points="0 0, 6 2.5, 0 5" fill="#bdc1c6" />
               </marker>
               <marker id="arr-l" markerWidth="5" markerHeight="4" refX="5" refY="2" orient="auto">
-                <polygon points="0 0, 5 2, 0 4" fill="#64748b" />
+                <polygon points="0 0, 5 2, 0 4" fill="#bdc1c6" />
               </marker>
               <linearGradient id="grad-recall" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0" stop-color="#22d3ee" stop-opacity="0.18" />
-                <stop offset="1" stop-color="#22d3ee" stop-opacity="0.02" />
+                <stop offset="0" stop-color="#1a73e8" stop-opacity="0.10" />
+                <stop offset="1" stop-color="#1a73e8" stop-opacity="0.02" />
               </linearGradient>
               <linearGradient id="grad-plan" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0" stop-color="#a78bfa" stop-opacity="0.18" />
-                <stop offset="1" stop-color="#a78bfa" stop-opacity="0.02" />
+                <stop offset="0" stop-color="#9b72cb" stop-opacity="0.10" />
+                <stop offset="1" stop-color="#9b72cb" stop-opacity="0.02" />
               </linearGradient>
               <linearGradient id="grad-exec" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0" stop-color="#fbbf24" stop-opacity="0.18" />
-                <stop offset="1" stop-color="#fbbf24" stop-opacity="0.02" />
+                <stop offset="0" stop-color="#f9ab00" stop-opacity="0.10" />
+                <stop offset="1" stop-color="#f9ab00" stop-opacity="0.02" />
               </linearGradient>
               <linearGradient id="grad-out" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0" stop-color="#34d399" stop-opacity="0.22" />
-                <stop offset="1" stop-color="#34d399" stop-opacity="0.04" />
+                <stop offset="0" stop-color="#d96570" stop-opacity="0.12" />
+                <stop offset="1" stop-color="#d96570" stop-opacity="0.03" />
               </linearGradient>
             </defs>
 
             <!-- Phase 分组背景 -->
-            <rect x="155" y="18" width="210" height="175" rx="14" class="phase-rect" fill="url(#grad-recall)" stroke="#22d3ee" />
+            <rect x="155" y="18" width="210" height="175" rx="14" class="phase-rect" fill="url(#grad-recall)" stroke="#1a73e8" />
             <text x="260" y="38" class="phase-label phase-label--recall">PHASE I · RETRIEVAL</text>
 
-            <rect x="155" y="208" width="210" height="162" rx="14" class="phase-rect" fill="url(#grad-plan)" stroke="#a78bfa" />
+            <rect x="155" y="208" width="210" height="162" rx="14" class="phase-rect" fill="url(#grad-plan)" stroke="#9b72cb" />
             <text x="260" y="228" class="phase-label phase-label--plan">PHASE II · PLANNING</text>
 
-            <rect x="55" y="385" width="410" height="175" rx="14" class="phase-rect" fill="url(#grad-exec)" stroke="#fbbf24" />
+            <rect x="55" y="385" width="410" height="175" rx="14" class="phase-rect" fill="url(#grad-exec)" stroke="#f9ab00" />
             <text x="260" y="405" class="phase-label phase-label--exec">PHASE III · EXECUTION</text>
 
-            <rect x="355" y="575" width="110" height="50" rx="14" class="phase-rect" fill="url(#grad-out)" stroke="#34d399" />
+            <rect x="355" y="575" width="110" height="50" rx="14" class="phase-rect" fill="url(#grad-out)" stroke="#d96570" />
             <text x="410" y="592" class="phase-label phase-label--out">PHASE IV</text>
 
             <!-- ===== Phase I 节点 ===== -->
@@ -306,8 +306,8 @@ const phases = [
   padding: 10px 12px 10px 16px;
   border: 1px solid var(--line-2);
   border-radius: 999px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
-  backdrop-filter: blur(22px);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(20px);
   box-shadow: var(--shadow-sm);
   opacity: 0;
   transform: translateY(-10px);
@@ -334,8 +334,8 @@ const phases = [
   height: 32px;
   border-radius: 10px;
   color: #ffffff;
-  background: linear-gradient(135deg, #6366f1, #06b6d4);
-  box-shadow: 0 8px 22px rgba(99, 102, 241, 0.5);
+  background: linear-gradient(135deg, #4285f4 0%, #9b72cb 50%, #d96570 100%);
+  box-shadow: 0 2px 8px rgba(66, 133, 244, 0.32);
 }
 
 .topbar__name {
@@ -347,10 +347,10 @@ const phases = [
 .topbar__tag {
   padding: 2px 8px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--bg-2);
   color: var(--text-2);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .topbar__nav {
@@ -385,17 +385,17 @@ const phases = [
   border: none;
   border-radius: 999px;
   color: #ffffff;
-  background: linear-gradient(135deg, var(--color-primary-strong), var(--color-primary-deep));
-  box-shadow: 0 8px 24px rgba(79, 70, 229, 0.5);
+  background: var(--color-primary);
+  box-shadow: 0 1px 2px rgba(26, 115, 232, 0.28), 0 1px 3px rgba(26, 115, 232, 0.18);
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 600;
   cursor: pointer;
-  transition: transform 0.18s, box-shadow 0.18s;
+  transition: background 0.18s, box-shadow 0.18s;
 }
 
 .topbar__cta:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-glow);
+  background: var(--color-primary-strong);
+  box-shadow: 0 1px 3px rgba(26, 115, 232, 0.4), 0 4px 10px rgba(26, 115, 232, 0.24);
 }
 
 /* ========== Stage ========== */
@@ -433,22 +433,21 @@ const phases = [
   gap: 8px;
   align-self: flex-start;
   padding: 7px 14px 7px 12px;
-  border: 1px solid rgba(34, 211, 238, 0.32);
+  border: 1px solid rgba(26, 115, 232, 0.24);
   border-radius: 999px;
-  background: linear-gradient(90deg, rgba(34, 211, 238, 0.16), rgba(99, 102, 241, 0.12));
-  color: #67e8f9;
+  background: rgba(26, 115, 232, 0.08);
+  color: var(--color-primary);
   font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.16em;
-  backdrop-filter: blur(8px);
+  font-weight: 700;
+  letter-spacing: 0.14em;
 }
 
 .hero__pill-dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #22d3ee;
-  box-shadow: 0 0 0 4px rgba(34, 211, 238, 0.22);
+  background: var(--color-primary);
+  box-shadow: 0 0 0 4px rgba(26, 115, 232, 0.18);
   animation: pulse 1.6s infinite;
 }
 
@@ -462,18 +461,17 @@ const phases = [
   display: flex;
   flex-direction: column;
   font-size: clamp(42px, 5vw, 68px);
-  font-weight: 900;
-  line-height: 0.98;
-  letter-spacing: -0.04em;
+  font-weight: 700;
+  line-height: 1.04;
+  letter-spacing: -0.035em;
   color: var(--text-1);
 }
 
 .hero__title-line--gradient {
-  background: linear-gradient(120deg, #818cf8 0%, #22d3ee 48%, #34d399 100%);
+  background: linear-gradient(120deg, #4285f4 0%, #9b72cb 50%, #d96570 100%);
   background-clip: text;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 6px 24px rgba(99, 102, 241, 0.34));
 }
 
 .hero__lead {
@@ -485,10 +483,10 @@ const phases = [
 }
 
 .hero__lead em {
-  color: var(--text-1);
+  color: var(--color-primary);
   font-style: normal;
-  font-weight: 700;
-  background: linear-gradient(120deg, rgba(99, 102, 241, 0.2), rgba(34, 211, 238, 0.18));
+  font-weight: 600;
+  background: rgba(26, 115, 232, 0.08);
   padding: 1px 8px;
   border-radius: 6px;
 }
@@ -500,33 +498,31 @@ const phases = [
 }
 
 .hero__cta :deep(.el-button) {
-  height: 52px;
-  padding: 0 26px;
-  border-radius: 14px;
-  font-weight: 800;
+  height: 48px;
+  padding: 0 24px;
+  border-radius: 24px;
+  font-weight: 600;
 }
 
 .ghost-btn {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  height: 52px;
+  height: 48px;
   padding: 0 22px;
   border: 1px solid var(--line-strong);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--text-1);
+  border-radius: 24px;
+  background: #ffffff;
+  color: var(--color-primary);
   font-size: 14px;
-  font-weight: 800;
+  font-weight: 600;
   cursor: pointer;
-  backdrop-filter: blur(8px);
-  transition: all 0.18s;
+  transition: background 0.18s, border-color 0.18s;
 }
 
 .ghost-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(129, 140, 248, 0.6);
-  transform: translateY(-1px);
+  background: rgba(26, 115, 232, 0.06);
+  border-color: var(--color-primary);
 }
 
 /* ========== 阶段卡 ========== */
@@ -542,13 +538,13 @@ const phases = [
   overflow: hidden;
   padding: 16px 18px 14px;
   border: 1px solid var(--line-2);
-  border-radius: 16px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
-  backdrop-filter: blur(14px);
+  border-radius: 12px;
+  background: #ffffff;
   cursor: default;
   opacity: 0;
   animation: phase-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  transition: transform 0.22s ease, border-color 0.22s ease;
+  transition: transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease;
+  box-shadow: var(--shadow-sm);
 }
 
 @keyframes phase-in {
@@ -561,19 +557,21 @@ const phases = [
   inset: 0;
   pointer-events: none;
   content: '';
-  background: linear-gradient(90deg, var(--phase-c), transparent 50%) top / 100% 2px no-repeat,
+  background: linear-gradient(90deg, var(--phase-c), transparent 60%) top / 100% 3px no-repeat,
               radial-gradient(260px 140px at 0% 0%, var(--phase-c-soft), transparent 60%);
 }
 
 .phase:hover {
-  transform: translateY(-2px);
+  transform: translateY(-1px);
   border-color: var(--phase-c);
+  box-shadow: var(--shadow-md);
 }
 
-.phase--cyan    { --phase-c: #22d3ee; --phase-c-soft: rgba(34, 211, 238, 0.16); }
-.phase--violet  { --phase-c: #a78bfa; --phase-c-soft: rgba(167, 139, 250, 0.18); }
-.phase--amber   { --phase-c: #fbbf24; --phase-c-soft: rgba(251, 191, 36, 0.18); }
-.phase--emerald { --phase-c: #34d399; --phase-c-soft: rgba(52, 211, 153, 0.18); }
+/* Gemini 阶段色：Blue / Purple / Amber / Coral */
+.phase--cyan    { --phase-c: #1a73e8; --phase-c-soft: rgba(26, 115, 232, 0.10); }
+.phase--violet  { --phase-c: #9b72cb; --phase-c-soft: rgba(155, 114, 203, 0.10); }
+.phase--amber   { --phase-c: #f9ab00; --phase-c-soft: rgba(249, 171, 0, 0.10); }
+.phase--emerald { --phase-c: #d96570; --phase-c-soft: rgba(217, 101, 112, 0.10); }
 
 .phase__head {
   position: relative;
@@ -594,16 +592,16 @@ const phases = [
   border-radius: 6px;
   background: var(--phase-c-soft);
   color: var(--phase-c);
-  font-family: 'SF Mono', ui-monospace, monospace;
+  font-family: 'Roboto Mono', 'SF Mono', ui-monospace, monospace;
   font-size: 11px;
-  font-weight: 900;
+  font-weight: 700;
   letter-spacing: 0.05em;
 }
 
 .phase__name {
   color: var(--text-3);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   white-space: nowrap;
@@ -616,16 +614,16 @@ const phases = [
   z-index: 1;
   color: var(--text-1);
   font-size: 16px;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: -0.01em;
-  line-height: 1.25;
+  line-height: 1.3;
 }
 
 .phase__desc {
   position: relative;
   z-index: 1;
   margin-top: 6px;
-  color: var(--text-3);
+  color: var(--text-2);
   font-size: 12.5px;
   line-height: 1.55;
 }
@@ -645,7 +643,7 @@ const phases = [
   display: block;
   color: var(--text-1);
   font-size: 22px;
-  font-weight: 900;
+  font-weight: 600;
   letter-spacing: -0.02em;
   line-height: 1;
 }
@@ -655,8 +653,8 @@ const phases = [
   margin-top: 4px;
   color: var(--text-3);
   font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
+  font-weight: 600;
+  letter-spacing: 0.10em;
   text-transform: uppercase;
 }
 
@@ -675,17 +673,16 @@ const phases = [
   border: 1px solid var(--line-2);
   border-radius: var(--radius-2xl);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.015)),
-    radial-gradient(600px 400px at 92% 0%, rgba(99, 102, 241, 0.18), transparent 50%);
+    radial-gradient(600px 400px at 92% 0%, rgba(155, 114, 203, 0.08), transparent 50%),
+    #ffffff;
   box-shadow: var(--shadow-md);
-  backdrop-filter: blur(20px);
 }
 
 .arch-pane::before {
   position: absolute;
   inset: 1px;
   pointer-events: none;
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(60, 64, 67, 0.04);
   border-radius: calc(var(--radius-2xl) - 1px);
   content: '';
 }
@@ -702,12 +699,12 @@ const phases = [
 .arch-pane__badge {
   display: inline-block;
   padding: 5px 10px;
-  border: 1px solid rgba(99, 102, 241, 0.36);
+  border: 1px solid rgba(26, 115, 232, 0.24);
   border-radius: 999px;
-  background: rgba(99, 102, 241, 0.14);
-  color: #a5b4fc;
+  background: rgba(26, 115, 232, 0.08);
+  color: var(--color-primary);
   font-size: 10px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.12em;
 }
 
@@ -715,8 +712,8 @@ const phases = [
   margin: 8px 0 0;
   color: var(--text-1);
   font-size: clamp(22px, 2.4vw, 30px);
-  font-weight: 900;
-  letter-spacing: -0.03em;
+  font-weight: 700;
+  letter-spacing: -0.025em;
 }
 
 .arch-pane__dots {
@@ -728,12 +725,12 @@ const phases = [
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.18);
+  background: var(--bg-3);
 }
 
-.arch-pane__dots span:nth-child(1) { background: rgba(248, 113, 113, 0.7); }
-.arch-pane__dots span:nth-child(2) { background: rgba(251, 191, 36, 0.7); }
-.arch-pane__dots span:nth-child(3) { background: rgba(52, 211, 153, 0.7); }
+.arch-pane__dots span:nth-child(1) { background: #ea4335; }
+.arch-pane__dots span:nth-child(2) { background: #f9ab00; }
+.arch-pane__dots span:nth-child(3) { background: #34a853; }
 
 .arch-pane__caption {
   position: relative;
@@ -741,7 +738,7 @@ const phases = [
   margin: 6px 0 12px;
   color: var(--text-3);
   font-size: 12px;
-  font-family: 'SF Mono', ui-monospace, monospace;
+  font-family: 'Roboto Mono', 'SF Mono', ui-monospace, monospace;
   letter-spacing: 0.02em;
 }
 
@@ -755,115 +752,114 @@ const phases = [
   padding: 8px;
   border-radius: var(--radius-lg);
   background:
-    linear-gradient(180deg, rgba(2, 6, 23, 0.5), rgba(2, 6, 23, 0.2)),
-    radial-gradient(circle at 50% 50%, rgba(99, 102, 241, 0.06), transparent 60%);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+    radial-gradient(circle at 50% 50%, rgba(26, 115, 232, 0.04), transparent 60%),
+    var(--bg-1);
+  box-shadow: inset 0 0 0 1px var(--line-2);
 }
 
 .arch-svg {
   width: 100%;
   height: auto;
   max-height: 640px;
-  filter: drop-shadow(0 8px 22px rgba(0, 0, 0, 0.4));
 }
 
-/* SVG 样式（深色版） */
+/* SVG 样式（AI Studio 明亮版） */
 .phase-rect {
   stroke-width: 1.2;
-  stroke-opacity: 0.65;
+  stroke-opacity: 0.5;
 }
 
 .phase-label {
-  font-family: 'SF Mono', ui-monospace, monospace;
+  font-family: 'Roboto Mono', 'SF Mono', ui-monospace, monospace;
   font-size: 10.5px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
+  font-weight: 700;
+  letter-spacing: 0.10em;
   text-anchor: middle;
 }
 
-.phase-label--recall { fill: #67e8f9; }
-.phase-label--plan   { fill: #c4b5fd; }
-.phase-label--exec   { fill: #fcd34d; }
-.phase-label--out    { fill: #6ee7b7; }
+.phase-label--recall { fill: #1a73e8; }
+.phase-label--plan   { fill: #9b72cb; }
+.phase-label--exec   { fill: #f9ab00; }
+.phase-label--out    { fill: #d96570; }
 
 .node-box {
-  fill: rgba(15, 23, 42, 0.86);
-  stroke: rgba(255, 255, 255, 0.18);
+  fill: #ffffff;
+  stroke: var(--line-strong);
   stroke-width: 1;
 }
 
-.node-box--recall { stroke: #22d3ee; }
-.node-box--plan   { stroke: #a78bfa; }
-.node-box--exec   { stroke: #fbbf24; }
-.node-box--out    { stroke: #34d399; }
+.node-box--recall { stroke: #1a73e8; }
+.node-box--plan   { stroke: #9b72cb; }
+.node-box--exec   { stroke: #f9ab00; }
+.node-box--out    { stroke: #d96570; }
 
 .node-terminal {
-  fill: #818cf8;
-  stroke: rgba(255, 255, 255, 0.7);
+  fill: #1a73e8;
+  stroke: #ffffff;
   stroke-width: 1.4;
 }
 
 .node-terminal--end {
-  fill: #34d399;
+  fill: #d96570;
 }
 
 .node-decision {
-  fill: rgba(15, 23, 42, 0.86);
+  fill: #ffffff;
   stroke-width: 1.1;
 }
 
-.node-decision--plan { stroke: #a78bfa; }
-.node-decision--exec { stroke: #fbbf24; }
+.node-decision--plan { stroke: #9b72cb; }
+.node-decision--exec { stroke: #f9ab00; }
 
 .label-node {
   fill: var(--text-1);
-  font-family: 'SF Mono', ui-monospace, monospace;
+  font-family: 'Roboto Mono', 'SF Mono', ui-monospace, monospace;
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: -0.02em;
   text-anchor: middle;
 }
 
 .label-terminal {
   fill: #ffffff;
-  font-family: 'Inter', sans-serif;
+  font-family: 'Google Sans', 'Inter', sans-serif;
   font-size: 11px;
-  font-weight: 900;
+  font-weight: 700;
   text-anchor: middle;
 }
 
 .label-decision {
-  fill: #e2e8f0;
-  font-family: 'SF Mono', ui-monospace, monospace;
+  fill: var(--text-1);
+  font-family: 'Roboto Mono', 'SF Mono', ui-monospace, monospace;
   font-size: 9.5px;
-  font-weight: 700;
+  font-weight: 600;
   text-anchor: middle;
 }
 
 .label-edge {
-  fill: #94a3b8;
-  font-family: 'Inter', sans-serif;
+  fill: var(--text-3);
+  font-family: 'Google Sans', 'Inter', sans-serif;
   font-size: 9px;
-  font-weight: 700;
+  font-weight: 600;
   text-anchor: start;
 }
 
 .edge {
   fill: none;
-  stroke: rgba(203, 213, 225, 0.6);
+  stroke: #9aa0a6;
   stroke-width: 1.2;
 }
 
 .edge-cond {
   fill: none;
-  stroke: rgba(148, 163, 184, 0.5);
+  stroke: #bdc1c6;
   stroke-dasharray: 5 3;
   stroke-width: 1;
 }
 
 .edge-loop {
   fill: none;
-  stroke: rgba(100, 116, 139, 0.55);
+  stroke: #bdc1c6;
   stroke-dasharray: 2 3;
   stroke-width: 0.9;
 }
@@ -888,11 +884,11 @@ const phases = [
   padding: 4px 10px;
   border: 1px solid var(--line-2);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--bg-1);
   color: var(--text-2);
-  font-family: 'SF Mono', ui-monospace, monospace;
+  font-family: 'Roboto Mono', 'SF Mono', ui-monospace, monospace;
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .leg-sw {
@@ -923,7 +919,7 @@ const phases = [
   padding-top: 8px;
   color: var(--text-3);
   font-size: 11px;
-  font-family: 'SF Mono', ui-monospace, monospace;
+  font-family: 'Roboto Mono', 'SF Mono', ui-monospace, monospace;
   letter-spacing: 0.04em;
 }
 
