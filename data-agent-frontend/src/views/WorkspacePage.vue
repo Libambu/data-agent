@@ -70,7 +70,7 @@ const DATABASE_OPTIONS = [
 const factory = new ClientFactory()
 const client = shallowRef<Client | undefined>()
 const steps = reactive<GraphStep[]>([])
-const userInput = ref(DEFAULT_EXAMPLES[0])
+const userInput = ref(DEFAULT_EXAMPLES[0] ?? '')
 const selectedDatabase = ref<(typeof DATABASE_OPTIONS)[number]>('california_schools')
 const currentTaskId = ref<string>()
 const currentContextId = ref<string>()
@@ -105,6 +105,28 @@ const orderedSteps = computed(() => {
   return DATA_AGENT_NODE_ORDER
     .map((name) => steps.find((step) => step.name === name))
     .filter((step): step is GraphStep => Boolean(step))
+})
+
+const completedStepCount = computed(
+  () => orderedSteps.value.filter((step) => step.status === 'success').length,
+)
+const progressPercentage = computed(() => {
+  if (isRunning.value && !orderedSteps.value.length) return 8
+  return Math.round((completedStepCount.value / DATA_AGENT_NODE_ORDER.length) * 100)
+})
+const isClientReady = computed(() => Boolean(client.value))
+const canSubmit = computed(() => Boolean((userInput.value ?? '').trim()) && isClientReady.value && !isRunning.value)
+const workspaceStatusText = computed(() => {
+  if (!isClientReady.value) return '连接中'
+  if (isRunning.value) return '执行中'
+  if (orderedSteps.value.length) return '执行完成'
+  return '就绪'
+})
+const timelineStatusText = computed(() => {
+  if (!isClientReady.value) return '正在连接 Agent'
+  if (isRunning.value) return '正在执行'
+  if (orderedSteps.value.length) return '执行完成'
+  return '等待开始'
 })
 
 const resetSteps = () => {
@@ -210,37 +232,57 @@ onMounted(async () => {
     <!-- 顶部导航栏 -->
     <nav class="workspace-nav">
       <div class="workspace-nav__left" @click="goHome">
-        <el-icon><HomeFilled /></el-icon>
-        <span>Data Agent</span>
+        <span class="workspace-nav__logo">
+          <el-icon><HomeFilled /></el-icon>
+        </span>
+        <div>
+          <span>Data Agent</span>
+          <small>智能数据分析工作台</small>
+        </div>
       </div>
       <div class="workspace-nav__status">
-        <span :class="['status-dot', { 'status-dot--active': isRunning }]"></span>
-        {{ isRunning ? '执行中' : '就绪' }}
+        <span
+          :class="[
+            'status-dot',
+            { 'status-dot--active': isRunning, 'status-dot--ready': isClientReady && !isRunning },
+          ]"
+        ></span>
+        {{ workspaceStatusText }}
       </div>
     </nav>
 
+    <section class="workspace-hero">
+      <div>
+        <div class="workspace-hero__eyebrow">Agent Command Center</div>
+        <h1>把业务问题转化为可追踪的数据分析流程</h1>
+        <p>选择数据库、输入自然语言问题，系统会自动完成召回、规划、SQL/Python 执行与报告生成。</p>
+      </div>
+      <div class="workspace-hero__stats">
+        <div class="workspace-stat">
+          <strong>{{ orderedSteps.length }}</strong>
+          <span>已触发节点</span>
+        </div>
+        <div class="workspace-stat">
+          <strong>{{ completedStepCount }}</strong>
+          <span>完成节点</span>
+        </div>
+        <div class="workspace-stat">
+          <strong>{{ progressPercentage }}%</strong>
+          <span>执行进度</span>
+        </div>
+      </div>
+    </section>
+
     <!-- 输入区域 -->
     <section class="input-panel">
-      <div class="input-panel__examples">
-        <span class="input-panel__examples-label">示例：</span>
-        <button
-          v-for="example in DEFAULT_EXAMPLES"
-          :key="example"
-          class="example-chip"
-          type="button"
-          @click="userInput = example"
-        >
-          {{ example }}
-        </button>
-      </div>
-
-      <div class="input-panel__row">
+      <div class="input-panel__topline">
+        <div>
+          <h2>分析请求</h2>
+          <p>可直接使用示例，也可以输入自己的业务分析问题。</p>
+        </div>
         <div class="input-panel__db">
-          <el-select
-            v-model="selectedDatabase"
-            placeholder="选择数据库"
-            size="large"
-          >
+          <span>数据集</span>
+          <el-select v-model="selectedDatabase" placeholder="选择数据库" size="large">
             <el-option
               v-for="database in DATABASE_OPTIONS"
               :key="database"
@@ -249,27 +291,47 @@ onMounted(async () => {
             />
           </el-select>
         </div>
+      </div>
 
+      <div class="input-panel__examples">
+        <span class="input-panel__examples-label">推荐问题</span>
+        <button
+          v-for="example in DEFAULT_EXAMPLES"
+          :key="example"
+          class="example-chip"
+          type="button"
+          @click="userInput = example"
+        >
+          <el-icon><ChatLineRound /></el-icon>
+          {{ example }}
+        </button>
+      </div>
+
+      <div class="input-panel__composer">
         <el-input
           v-model="userInput"
           class="input-panel__textarea"
-          :rows="2"
+          :rows="3"
           type="textarea"
           resize="none"
-          placeholder="输入一个业务分析问题..."
+          placeholder="例如：统计 Alameda County 中 K-12 学生免费餐资格比例最高的学校..."
           @keydown.enter.exact.prevent="handleSend"
         />
 
-        <el-button
-          type="primary"
-          size="large"
-          :loading="isRunning"
-          @click="handleSend"
-          class="input-panel__btn"
-        >
-          <el-icon v-if="!isRunning"><Promotion /></el-icon>
-          {{ isRunning ? '运行中' : '执行' }}
-        </el-button>
+        <div class="input-panel__actions">
+          <span>{{ isClientReady ? 'Agent 已连接' : '正在连接 Agent...' }}</span>
+          <el-button
+            class="input-panel__btn"
+            type="primary"
+            size="large"
+            :disabled="!canSubmit"
+            :loading="isRunning"
+            @click="handleSend"
+          >
+            <el-icon v-if="!isRunning"><Promotion /></el-icon>
+            {{ isRunning ? '运行中' : '开始执行' }}
+          </el-button>
+        </div>
       </div>
     </section>
 
@@ -277,11 +339,22 @@ onMounted(async () => {
     <section class="timeline-panel">
       <div class="timeline-panel__header">
         <div>
+          <span class="timeline-panel__eyebrow">Execution Timeline</span>
           <h2>节点执行轨迹</h2>
-          <p>实时展示各节点的执行状态和输出结果</p>
+          <p>实时展示各节点状态、结构化输出、代码执行结果和最终报告。</p>
         </div>
         <div class="timeline-panel__status">
-          {{ isRunning ? '正在执行' : orderedSteps.length ? '执行完成' : '等待开始' }}
+          {{ timelineStatusText }}
+        </div>
+      </div>
+
+      <div class="progress-card">
+        <div class="progress-card__info">
+          <span>整体进度</span>
+          <strong>{{ completedStepCount }} / {{ DATA_AGENT_NODE_ORDER.length }}</strong>
+        </div>
+        <div class="progress-card__bar" aria-hidden="true">
+          <span :style="{ width: `${progressPercentage}%` }"></span>
         </div>
       </div>
 
@@ -299,8 +372,15 @@ onMounted(async () => {
       </div>
 
       <div v-if="awaitingConfirmation" class="human-input-panel">
-        <h3>需要人工输入</h3>
-        <p>请填写确认结果和反馈，提交后会继续执行后续节点。</p>
+        <div class="human-input-panel__header">
+          <div class="human-input-panel__icon">
+            <el-icon><UserFilled /></el-icon>
+          </div>
+          <div>
+            <h3>需要人工输入</h3>
+            <p>请填写确认结果和反馈，提交后会继续执行后续节点。</p>
+          </div>
+        </div>
         <div class="human-input-panel__field">
           <div class="human-input-panel__label">确认结果</div>
           <el-radio-group v-model="confirmationApproved">
@@ -324,10 +404,18 @@ onMounted(async () => {
       </div>
 
       <div v-else-if="!orderedSteps.length" class="empty-state">
-        <el-icon class="empty-state__icon"><Cpu /></el-icon>
+        <div class="empty-state__orb">
+          <el-icon class="empty-state__icon"><Cpu /></el-icon>
+        </div>
         <div class="empty-state__title">等待执行</div>
         <div class="empty-state__desc">
           选择示例问题或输入自定义需求，点击执行即可观察节点运行轨迹。
+        </div>
+        <div class="empty-state__steps">
+          <span>召回</span>
+          <span>规划</span>
+          <span>执行</span>
+          <span>报告</span>
         </div>
       </div>
     </section>
@@ -336,52 +424,133 @@ onMounted(async () => {
 
 <style scoped>
 .page-shell {
+  position: relative;
   min-height: 100vh;
-  padding: 0 20px 48px;
+  padding: 18px clamp(16px, 2.5vw, 34px) 58px;
+  overflow: hidden;
   background:
-    radial-gradient(circle at top left, rgba(253, 224, 71, 0.14), transparent 24%),
-    radial-gradient(circle at top right, rgba(56, 189, 248, 0.1), transparent 20%),
-    linear-gradient(180deg, #fffdf8 0%, #f8fafc 100%);
+    radial-gradient(circle at 8% 0%, rgba(249, 115, 22, 0.16), transparent 30%),
+    radial-gradient(circle at 92% 6%, rgba(37, 99, 235, 0.14), transparent 28%),
+    linear-gradient(180deg, rgba(255, 251, 235, 0.92) 0%, rgba(248, 250, 252, 0.96) 48%, rgba(239, 246, 255, 0.96) 100%);
+}
+
+.page-shell::before,
+.page-shell::after {
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+  content: '';
+  border-radius: 999px;
+}
+
+.page-shell::before {
+  top: 160px;
+  left: -120px;
+  width: 280px;
+  height: 280px;
+  background: rgba(249, 115, 22, 0.1);
+  filter: blur(4px);
+}
+
+.page-shell::after {
+  right: -160px;
+  bottom: 8%;
+  width: 360px;
+  height: 360px;
+  background: rgba(37, 99, 235, 0.1);
+  filter: blur(4px);
 }
 
 /* 导航栏 */
+.workspace-nav,
+.workspace-hero,
+.input-panel,
+.timeline-panel {
+  position: relative;
+  z-index: 1;
+  max-width: 1180px;
+  margin-right: auto;
+  margin-left: auto;
+}
+
 .workspace-nav {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  max-width: 1080px;
-  margin: 0 auto;
-  padding: 16px 0;
+  margin-bottom: 22px;
+  padding: 12px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.07);
+  backdrop-filter: blur(20px);
 }
 
 .workspace-nav__left {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 16px;
-  font-weight: 700;
+  gap: 11px;
   color: #0f172a;
   cursor: pointer;
-  transition: color 0.2s;
+  transition: color 0.2s, transform 0.2s;
 }
 
 .workspace-nav__left:hover {
   color: #f97316;
+  transform: translateY(-1px);
+}
+
+.workspace-nav__left span:not(.workspace-nav__logo) {
+  display: block;
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+}
+
+.workspace-nav__left small {
+  display: block;
+  margin-top: 2px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.workspace-nav__logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 15px;
+  color: #ffffff;
+  background: linear-gradient(135deg, #f97316, #2563eb);
+  box-shadow: 0 12px 28px rgba(249, 115, 22, 0.22);
 }
 
 .workspace-nav__status {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 13px;
+  gap: 8px;
+  padding: 8px 13px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 999px;
   color: #64748b;
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .status-dot {
-  width: 8px;
-  height: 8px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
   background: #94a3b8;
+  box-shadow: 0 0 0 4px rgba(148, 163, 184, 0.12);
+}
+
+.status-dot--ready {
+  background: #22c55e;
+  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.14);
 }
 
 .status-dot--active {
@@ -390,85 +559,222 @@ onMounted(async () => {
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.14);
+  }
+
+  50% {
+    opacity: 0.55;
+    box-shadow: 0 0 0 8px rgba(34, 197, 94, 0.08);
+  }
+}
+
+.workspace-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 26px;
+  align-items: end;
+  margin-bottom: 22px;
+  padding: 26px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 32px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.88), rgba(248, 250, 252, 0.74)),
+    radial-gradient(circle at top right, rgba(249, 115, 22, 0.1), transparent 30%);
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.1);
+  backdrop-filter: blur(22px);
+}
+
+.workspace-hero__eyebrow {
+  display: inline-flex;
+  margin-bottom: 10px;
+  padding: 7px 12px;
+  border: 1px solid rgba(249, 115, 22, 0.2);
+  border-radius: 999px;
+  color: #ea580c;
+  background: rgba(255, 247, 237, 0.72);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.workspace-hero h1 {
+  max-width: 760px;
+  margin: 0;
+  color: #0f172a;
+  font-size: clamp(30px, 4vw, 52px);
+  font-weight: 950;
+  line-height: 1.08;
+  letter-spacing: -0.055em;
+}
+
+.workspace-hero p {
+  max-width: 720px;
+  margin: 14px 0 0;
+  color: #64748b;
+  font-size: 15px;
+  line-height: 1.8;
+}
+
+.workspace-hero__stats {
+  display: grid;
+  grid-template-columns: repeat(3, 112px);
+  gap: 10px;
+}
+
+.workspace-stat {
+  padding: 15px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.72);
+  text-align: center;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.05);
+}
+
+.workspace-stat strong,
+.workspace-stat span {
+  display: block;
+}
+
+.workspace-stat strong {
+  color: #0f172a;
+  font-size: 26px;
+  line-height: 1;
+}
+
+.workspace-stat span {
+  margin-top: 8px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 /* 输入区域 */
 .input-panel {
-  max-width: 1080px;
-  margin: 0 auto 24px;
-  padding: 20px 24px;
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.85);
-  border: 1px solid rgba(15, 23, 42, 0.06);
-  backdrop-filter: blur(12px);
-  box-shadow: 0 8px 32px rgba(15, 23, 42, 0.04);
+  margin-bottom: 24px;
+  padding: 24px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 30px;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 20px 58px rgba(15, 23, 42, 0.08);
+  backdrop-filter: blur(18px);
+}
+
+.input-panel__topline {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 18px;
+}
+
+.input-panel__topline h2 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+}
+
+.input-panel__topline p {
+  margin: 6px 0 0;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.input-panel__db {
+  display: grid;
+  flex-shrink: 0;
+  gap: 7px;
+  width: 236px;
+}
+
+.input-panel__db span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .input-panel__examples {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 14px;
+  gap: 9px;
+  margin-bottom: 16px;
 }
 
 .input-panel__examples-label {
-  font-size: 12px;
   color: #94a3b8;
-  font-weight: 500;
+  font-size: 12px;
+  font-weight: 900;
 }
 
 .example-chip {
-  border: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: min(100%, 520px);
+  border: 1px solid rgba(148, 163, 184, 0.22);
   border-radius: 999px;
-  padding: 6px 12px;
-  background: #f8fafc;
+  padding: 8px 13px;
   color: #475569;
+  background: rgba(248, 250, 252, 0.82);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
   font-size: 12px;
+  line-height: 1.4;
   cursor: pointer;
-  transition: all 0.2s ease;
-  border: 1px solid #e2e8f0;
+  transition:
+    transform 0.2s ease,
+    border-color 0.2s ease,
+    background 0.2s ease,
+    color 0.2s ease;
 }
 
 .example-chip:hover {
-  background: #fff7ed;
-  border-color: #fed7aa;
+  transform: translateY(-1px);
+  border-color: rgba(249, 115, 22, 0.28);
   color: #ea580c;
+  background: rgba(255, 247, 237, 0.9);
 }
 
-.input-panel__row {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-}
-
-.input-panel__db {
-  flex-shrink: 0;
-  width: 180px;
+.input-panel__composer {
+  display: grid;
+  gap: 14px;
 }
 
 .input-panel__textarea {
-  flex: 1;
+  width: 100%;
+}
+
+.input-panel__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.input-panel__actions span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .input-panel__btn {
-  flex-shrink: 0;
-  height: 56px;
+  min-width: 148px;
+  height: 48px;
   padding: 0 24px;
 }
 
 /* 时间线 */
 .timeline-panel {
-  max-width: 1080px;
-  margin: 0 auto;
   padding: 24px;
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.85);
-  border: 1px solid rgba(15, 23, 42, 0.06);
-  backdrop-filter: blur(12px);
-  box-shadow: 0 8px 32px rgba(15, 23, 42, 0.04);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 30px;
+  background: rgba(255, 255, 255, 0.76);
+  box-shadow: 0 20px 58px rgba(15, 23, 42, 0.08);
+  backdrop-filter: blur(18px);
 }
 
 .timeline-panel__header {
@@ -479,103 +785,263 @@ onMounted(async () => {
   margin-bottom: 18px;
 }
 
+.timeline-panel__eyebrow {
+  display: inline-flex;
+  margin-bottom: 8px;
+  color: #ea580c;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .timeline-panel__header h2 {
   margin: 0;
-  font-size: 20px;
   color: #0f172a;
+  font-size: 24px;
+  font-weight: 950;
+  letter-spacing: -0.04em;
 }
 
 .timeline-panel__header p {
-  margin: 4px 0 0;
-  font-size: 13px;
+  margin: 6px 0 0;
   color: #64748b;
+  font-size: 13px;
+  line-height: 1.7;
 }
 
 .timeline-panel__status {
+  flex-shrink: 0;
+  border: 1px solid rgba(148, 163, 184, 0.18);
   border-radius: 999px;
-  padding: 8px 14px;
-  background: #f1f5f9;
+  padding: 9px 14px;
   color: #334155;
+  background: rgba(248, 250, 252, 0.86);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 900;
+}
+
+.progress-card {
+  margin-bottom: 18px;
+  padding: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 22px;
+  background:
+    linear-gradient(135deg, rgba(255, 247, 237, 0.72), rgba(239, 246, 255, 0.64)),
+    rgba(255, 255, 255, 0.72);
+}
+
+.progress-card__info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.progress-card__info strong {
+  color: #0f172a;
+}
+
+.progress-card__bar {
+  overflow: hidden;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(226, 232, 240, 0.88);
+}
+
+.progress-card__bar span {
+  display: block;
+  min-width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #f97316, #2563eb);
+  box-shadow: 0 10px 24px rgba(249, 115, 22, 0.24);
+  transition: width 0.35s ease;
 }
 
 .timeline-panel__list {
   display: grid;
-  gap: 16px;
+  gap: 18px;
 }
 
 /* 人工输入面板 */
 .human-input-panel {
   margin-top: 18px;
-  border: 1px solid rgba(168, 85, 247, 0.24);
-  border-radius: 16px;
-  padding: 16px;
+  border: 1px solid rgba(168, 85, 247, 0.22);
+  border-radius: 24px;
+  padding: 18px;
   background:
-    radial-gradient(circle at top left, rgba(168, 85, 247, 0.1), transparent 32%),
-    linear-gradient(180deg, #ffffff, #faf5ff);
+    radial-gradient(circle at top left, rgba(168, 85, 247, 0.12), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(250, 245, 255, 0.9));
+  box-shadow: 0 18px 44px rgba(88, 28, 135, 0.08);
+}
+
+.human-input-panel__header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.human-input-panel__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  border-radius: 16px;
+  color: #9333ea;
+  background: #faf5ff;
+  box-shadow: 0 10px 24px rgba(147, 51, 234, 0.12);
 }
 
 .human-input-panel h3 {
   margin: 0;
-  font-size: 18px;
   color: #0f172a;
+  font-size: 18px;
+  font-weight: 900;
 }
 
 .human-input-panel p {
-  margin: 8px 0 0;
-  color: #475569;
+  margin: 6px 0 0;
+  color: #64748b;
+  line-height: 1.7;
 }
 
 .human-input-panel__field {
-  margin: 14px 0;
+  margin: 16px 0;
 }
 
 .human-input-panel__label {
   margin-bottom: 8px;
-  font-size: 13px;
   color: #334155;
+  font-size: 13px;
+  font-weight: 800;
 }
 
 /* 空状态 */
 .empty-state {
-  padding: 48px 20px;
-  border: 1px dashed rgba(100, 116, 139, 0.25);
-  border-radius: 16px;
+  padding: 56px 20px;
+  border: 1px dashed rgba(100, 116, 139, 0.28);
+  border-radius: 24px;
   text-align: center;
-  background: rgba(248, 250, 252, 0.6);
+  background:
+    radial-gradient(circle at center top, rgba(249, 115, 22, 0.08), transparent 34%),
+    rgba(248, 250, 252, 0.62);
+}
+
+.empty-state__orb {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 78px;
+  height: 78px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 28px;
+  margin-bottom: 16px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 20px 46px rgba(15, 23, 42, 0.08);
 }
 
 .empty-state__icon {
+  color: #f97316;
   font-size: 36px;
-  color: #cbd5e1;
-  margin-bottom: 12px;
 }
 
 .empty-state__title {
-  font-size: 16px;
-  font-weight: 600;
-  color: #334155;
+  color: #0f172a;
+  font-size: 18px;
+  font-weight: 900;
 }
 
 .empty-state__desc {
-  margin-top: 6px;
-  color: #94a3b8;
+  max-width: 520px;
+  margin: 8px auto 0;
+  color: #64748b;
   font-size: 13px;
+  line-height: 1.7;
 }
 
-@media (max-width: 768px) {
-  .input-panel__row {
+.empty-state__steps {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.empty-state__steps span {
+  padding: 6px 11px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 999px;
+  color: #64748b;
+  background: rgba(255, 255, 255, 0.8);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+@media (max-width: 960px) {
+  .workspace-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .workspace-hero__stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .input-panel__topline {
     flex-direction: column;
   }
 
   .input-panel__db {
     width: 100%;
   }
+}
+
+@media (max-width: 720px) {
+  .page-shell {
+    padding: 14px 14px 44px;
+  }
+
+  .workspace-nav {
+    align-items: flex-start;
+    border-radius: 24px;
+  }
+
+  .workspace-nav__left small {
+    display: none;
+  }
+
+  .workspace-hero,
+  .input-panel,
+  .timeline-panel {
+    border-radius: 24px;
+    padding: 18px;
+  }
+
+  .workspace-hero__stats {
+    grid-template-columns: 1fr;
+  }
+
+  .input-panel__actions,
+  .timeline-panel__header {
+    flex-direction: column;
+    align-items: stretch;
+  }
 
   .input-panel__btn {
     width: 100%;
-    height: 44px;
+  }
+
+  .example-chip {
+    width: 100%;
+    justify-content: flex-start;
+    border-radius: 18px;
   }
 }
 </style>
