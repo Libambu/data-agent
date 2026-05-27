@@ -217,7 +217,15 @@ const streamMessage = async (
         const text = artifact.parts.find((p) => p.kind === 'text')?.text || ''
         const data = artifact.parts.find((p) => p.kind === 'data')?.data
 
-        if (artifactName) {
+        // 后端在图执行结束时会发送一个 name === "__END__" 的 artifact，
+        // 它代表整个 Graph 已经跑完，但不是真实节点；
+        // 同时后端在正常完成时不会再发 status-update completed，
+        // 因此这里需要把它当作完成信号：把所有 pending 节点标记为 success，
+        // 并且不要把它 push 到 steps 里。
+        if (artifactName === '__END__') {
+          awaitingConfirmation.value = false
+          markAllPendingStepAsSuccess()
+        } else if (artifactName) {
           const outputType = String(artifact.metadata?.outputType ?? '')
           const status: GraphStep['status'] =
             outputType === DATA_AGENT_ARTIFACT_OUTPUT.GRAPH_NODE_FINISHED ? 'success' : 'pending'
