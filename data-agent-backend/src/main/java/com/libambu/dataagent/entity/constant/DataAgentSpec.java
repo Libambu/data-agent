@@ -31,7 +31,8 @@ public final class DataAgentSpec {
             public static final String FEASIBILITY_ASSESSMENT = "FEASIBILITY_ASSESSMENT_NODE";
             public static final String PLANNER = "PLANNER_NODE";
             public static final String HUMAN_FEEDBACK = "HUMAN_FEEDBACK_NODE";
-            public static final String PLAN_EXECUTION = "PLAN_EXECUTE_NODE";
+            /** Supervisor（主管 Agent）节点：每轮由 LLM 动态决策派给哪个 Sub-Agent。 */
+            public static final String SUPERVISOR = "SUPERVISOR_NODE";
             public static final String SQL_GENERATION = "SQL_GENERATE_NODE";
             public static final String SQL_EXECUTION = "SQL_EXECUTE_NODE";
             public static final String PYTHON_GENERATION = "PYTHON_GENERATE_NODE";
@@ -82,7 +83,7 @@ public final class DataAgentSpec {
                 private Planning() {
                 }
 
-                /** Planner 节点产出的完整执行计划（结构化 Plan 对象），人工审核与 PlanExecuteNode 都会读取。 */
+                /** Planner 节点产出的草稿执行计划（结构化 Plan 对象），用于人工审核展示；Supervisor 会在执行过程中动态覆写其 executionPlan。 */
                 public static final String PLAN = "PLANNER_NODE_OUTPUT";
                 /** 计划校验失败时的错误信息，用于让 Planner 下一轮针对性修复。 */
                 public static final String VALIDATION_ERROR = "PLAN_VALIDATION_ERROR";
@@ -90,11 +91,13 @@ public final class DataAgentSpec {
                 public static final String REPAIR_COUNT = "PLAN_REPAIR_COUNT";
                 /** 规划/执行阶段写入的下一节点路由 key，配合条件边决定走向。 */
                 public static final String NEXT_NODE = "PLAN_NEXT_NODE";
-                /** 当前正在执行的计划步骤序号，PlanExecuteNode/Plan 中用来定位下一步要执行的子任务。 */
+                /** 当前正在执行的计划步骤序号，SupervisorNode/Plan 中用来定位下一步要执行的子任务。 */
                 public static final String CURRENT_STEP = "PLAN_CURRENT_STEP";
+                /** Supervisor 已经决策派单的轮次，从 0 起步，每决策一轮 +1，用于熔断与"是否首次进入"判断。 */
+                public static final String SUPERVISOR_ITERATION = "SUPERVISOR_ITERATION";
                 /** 计划校验状态（通过/不通过等枚举标识），驱动 Planner 是否需要重新生成。 */
                 public static final String VALIDATION_STATUS = "PLAN_VALIDATION_STATUS";
-                /** PlanExecuteNode 执行完成后聚合的产出结果，作为最终回答/下游引用的数据。 */
+                /** SupervisorNode 执行完成后聚合的产出结果，作为最终回答/下游引用的数据。 */
                 public static final String EXECUTION_OUTPUT = "PLAN_EXECUTE_NODE_OUTPUT";
             }
 
@@ -107,7 +110,7 @@ public final class DataAgentSpec {
                 public static final String CONFIRMATION_APPROVED = "confirmationApproved";
                 /** 用户拒绝时的反馈意见文本，被 PlannerNode 读取用于针对性修计划。 */
                 public static final String CONFIRMATION_FEEDBACK = "confirmationFeedback";
-                /** 人工审核后由 HumanFeedbackEdge 读取的下一节点（END / PLAN_EXECUTION / PLANNER）。 */
+                /** 人工审核后由 HumanFeedbackEdge 读取的下一节点（END / SUPERVISOR / PLANNER）。 */
                 public static final String NEXT_NODE = "HUMAN_NEXT_NODE";
             }
 

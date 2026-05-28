@@ -10,7 +10,7 @@ import lombok.extern.slf4j.Slf4j;
  * 人工审核后的条件边。
  * <p>
  * 根据 HumanFeedbackNode 写入的 NEXT_NODE 决定下一步走向：
- * PLAN_EXECUTION / PLANNER / END
+ * SUPERVISOR / PLANNER / END
  */
 @Slf4j
 public class HumanFeedbackEdge implements EdgeAction {

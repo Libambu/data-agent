@@ -75,13 +75,21 @@ const executionPlan = computed<PlanStep[]>(() => {
       <span class="planner-card__tag">下一节点: {{ planNextNode }}</span>
     </div>
 
+    <div class="planner-card__notice">
+      <span class="planner-card__notice-icon">i</span>
+      <span class="planner-card__notice-text">
+        以下为 <strong>草稿计划</strong>（仅供人工审核参考）。批准后实际执行由 <strong>Supervisor</strong> 基于每轮结果
+        <strong>动态派单</strong>，不会严格按下述步骤顺序执行。
+      </span>
+    </div>
+
     <div v-if="thoughtProcess" class="planner-card__section">
       <div class="planner-card__label">思考过程</div>
       <div class="planner-card__text">{{ thoughtProcess }}</div>
     </div>
 
     <div v-if="executionPlan.length" class="planner-card__section">
-      <div class="planner-card__label">执行步骤</div>
+      <div class="planner-card__label">建议步骤（草稿）</div>
       <div class="planner-card__steps">
         <article v-for="(item, index) in executionPlan" :key="`step-${index}`" class="planner-step">
           <div class="planner-step__title">Step {{ item.step ?? index + 1 }}</div>
@@ -150,6 +158,41 @@ const executionPlan = computed<PlanStep[]>(() => {
 
 .planner-card__meta {
   margin-top: 12px;
+}
+
+.planner-card__notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid #fcd34d;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #fffbeb, #fef3c7);
+  color: #92400e;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.planner-card__notice-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #f59e0b;
+  color: #ffffff;
+  font-family: 'Roboto Mono', 'SF Mono', ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.planner-card__notice-text strong {
+  color: #78350f;
+  font-weight: 700;
 }
 
 .planner-card__tag {

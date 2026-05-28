@@ -7,11 +7,11 @@ import com.alibaba.cloud.ai.graph.action.AsyncEdgeAction;
 import com.alibaba.cloud.ai.graph.action.AsyncNodeAction;
 import com.libambu.dataagent.agent.edges.FeasibilityAssessmentEdge;
 import com.libambu.dataagent.agent.edges.HumanFeedbackEdge;
-import com.libambu.dataagent.agent.edges.PlanExecutorEdge;
+import com.libambu.dataagent.agent.edges.SupervisorEdge;
 import com.libambu.dataagent.agent.nodes.EvidenceRecallNode;
 import com.libambu.dataagent.agent.nodes.FeasibilityAssessmentNode;
 import com.libambu.dataagent.agent.nodes.HumanFeedbackNode;
-import com.libambu.dataagent.agent.nodes.PlanExecuteNode;
+import com.libambu.dataagent.agent.nodes.SupervisorNode;
 import com.libambu.dataagent.agent.nodes.PlannerNode;
 import com.libambu.dataagent.agent.nodes.PythonAnalyzeNode;
 import com.libambu.dataagent.agent.nodes.PythonExecuteNode;
@@ -37,12 +37,12 @@ public class GraphConfiguration {
     /**
      * 数据 Agent 主链路 Graph：
      * START -> EVIDENCE_RECALL_NODE -> SCHEME_RECALL_NODE -> TABLE_RELATION_NODE
-     *       -> FEASIBILITY_ASSESSMENT_NODE -> PLANNER_NODE -> HUMAN_FEEDBACK_NODE
-     *       -> PLAN_EXECUTE_NODE -> (conditional) -> SQL_GENERATE_NODE -> SQL_EXECUTE_NODE -> PLAN_EXECUTE_NODE
-     *                                            -> PYTHON_GENERATE_NODE -> PYTHON_EXECUTE_NODE -> PYTHON_ANALYZE_NODE -> PLAN_EXECUTE_NODE
-     *                                            -> REPORT_GENERATOR_NODE -> END
+     *       -> FEASIBILITY_ASSESSMENT_NODE -> PLANNER_NODE（草稿计划） -> HUMAN_FEEDBACK_NODE
+     *       -> SUPERVISOR_NODE -> (动态派单) -> SQL_GENERATE_NODE -> SQL_EXECUTE_NODE -> SUPERVISOR_NODE
+     *                                       -> PYTHON_GENERATE_NODE -> PYTHON_EXECUTE_NODE -> PYTHON_ANALYZE_NODE -> SUPERVISOR_NODE
+     *                                       -> REPORT_GENERATOR_NODE -> END
      * <p>
-     * 对齐 kt 版的召回、可行性评估、任务拆解、人工审核、计划执行与 SQL/Python/Report 生成执行编排。
+     * 召回 -> 可行性评估 -> 草稿规划 -> 人工审核 -> Supervisor 动态派单 -> SQL/Python/Report Sub-Agent 循环。
      */
     @Bean
     public StateGraph dataAgentMainGraph(EvidenceRecallNode evidenceRecallNode,
@@ -51,7 +51,7 @@ public class GraphConfiguration {
                                          FeasibilityAssessmentNode feasibilityAssessmentNode,
                                          PlannerNode plannerNode,
                                          HumanFeedbackNode humanFeedbackNode,
-                                         PlanExecuteNode planExecuteNode,
+                                         SupervisorNode supervisorNode,
                                          SqlGeneratorNode sqlGeneratorNode,
                                          SqlExecuteNode sqlExecuteNode,
                                          PythonGeneratorNode pythonGeneratorNode,
@@ -77,12 +77,15 @@ public class GraphConfiguration {
             map.put(DataAgentSpec.Graph.StateKey.Planning.REPAIR_COUNT, KeyStrategy.REPLACE);     // 计划被拒绝/修复的次数（达到上限会熔断）
             map.put(DataAgentSpec.Graph.StateKey.Planning.NEXT_NODE, KeyStrategy.REPLACE);        // 规划阶段写入的下一节点路由
             map.put(DataAgentSpec.Graph.StateKey.Planning.CURRENT_STEP, KeyStrategy.REPLACE);     // 当前正在执行的计划步骤
-            map.put(DataAgentSpec.Graph.StateKey.Planning.EXECUTION_OUTPUT, KeyStrategy.REPLACE); // 计划执行节点的产出结果
+            map.put(DataAgentSpec.Graph.StateKey.Planning.SUPERVISOR_ITERATION, KeyStrategy.REPLACE); // Supervisor 已派单的轮次（熔断/首轮判断用）
+            // EXECUTION_OUTPUT 用 MERGE 策略：每个 Sub-Agent 只写自己步骤的 entry（如 step_1/step_2/step_2_analysis），
+            // 框架自动按 Map.putAll 合并，避免多轮 SQL/Python 之间互相覆盖。
+            map.put(DataAgentSpec.Graph.StateKey.Planning.EXECUTION_OUTPUT, KeyStrategy.MERGE);   // 计划执行节点的产出结果（按步骤累积）
 
             // ===== 人工审核阶段：用户对计划的确认结果与路由 =====
             map.put(DataAgentSpec.Graph.StateKey.HumanReview.CONFIRMATION_APPROVED, KeyStrategy.REPLACE); // 用户是否批准计划（true/false）
             map.put(DataAgentSpec.Graph.StateKey.HumanReview.CONFIRMATION_FEEDBACK, KeyStrategy.REPLACE); // 用户拒绝时给出的反馈意见，用于 Planner 重规划
-            map.put(DataAgentSpec.Graph.StateKey.HumanReview.NEXT_NODE, KeyStrategy.REPLACE);            // 审核后由条件边读取的下一节点（PLAN_EXECUTION/PLANNER/END）
+            map.put(DataAgentSpec.Graph.StateKey.HumanReview.NEXT_NODE, KeyStrategy.REPLACE);            // 审核后由条件边读取的下一节点（SUPERVISOR/PLANNER/END）
 
             // ===== 执行阶段：可行性评估、SQL 生成/执行等节点的结果 =====
             map.put(DataAgentSpec.Graph.StateKey.Execution.FEASIBILITY_RESULT, KeyStrategy.REPLACE);      // 可行性评估节点的输出结果
@@ -101,7 +104,7 @@ public class GraphConfiguration {
                 .addNode(DataAgentSpec.Graph.Node.FEASIBILITY_ASSESSMENT, AsyncNodeAction.node_async(feasibilityAssessmentNode))
                 .addNode(DataAgentSpec.Graph.Node.PLANNER, AsyncNodeAction.node_async(plannerNode))
                 .addNode(DataAgentSpec.Graph.Node.HUMAN_FEEDBACK, AsyncNodeAction.node_async(humanFeedbackNode))
-                .addNode(DataAgentSpec.Graph.Node.PLAN_EXECUTION, AsyncNodeAction.node_async(planExecuteNode))
+                .addNode(DataAgentSpec.Graph.Node.SUPERVISOR, AsyncNodeAction.node_async(supervisorNode))
                 .addNode(DataAgentSpec.Graph.Node.SQL_GENERATION, AsyncNodeAction.node_async(sqlGeneratorNode))
                 .addNode(DataAgentSpec.Graph.Node.SQL_EXECUTION, AsyncNodeAction.node_async(sqlExecuteNode))
                 .addNode(DataAgentSpec.Graph.Node.PYTHON_GENERATION, AsyncNodeAction.node_async(pythonGeneratorNode))
@@ -126,13 +129,13 @@ public class GraphConfiguration {
                         AsyncEdgeAction.edge_async(new HumanFeedbackEdge()),
                         Map.of(
                                 StateGraph.END, StateGraph.END,
-                                DataAgentSpec.Graph.Node.PLAN_EXECUTION, DataAgentSpec.Graph.Node.PLAN_EXECUTION,
+                                DataAgentSpec.Graph.Node.SUPERVISOR, DataAgentSpec.Graph.Node.SUPERVISOR,
                                 DataAgentSpec.Graph.Node.PLANNER, DataAgentSpec.Graph.Node.PLANNER
                         )
                 )
                 .addConditionalEdges(
-                        DataAgentSpec.Graph.Node.PLAN_EXECUTION,
-                        AsyncEdgeAction.edge_async(new PlanExecutorEdge()),
+                        DataAgentSpec.Graph.Node.SUPERVISOR,
+                        AsyncEdgeAction.edge_async(new SupervisorEdge()),
                         Map.of(
                                 DataAgentSpec.Graph.Node.SQL_GENERATION, DataAgentSpec.Graph.Node.SQL_GENERATION,
                                 DataAgentSpec.Graph.Node.PYTHON_GENERATION, DataAgentSpec.Graph.Node.PYTHON_GENERATION,
@@ -141,10 +144,10 @@ public class GraphConfiguration {
                         )
                 )
                 .addEdge(DataAgentSpec.Graph.Node.SQL_GENERATION, DataAgentSpec.Graph.Node.SQL_EXECUTION)
-                .addEdge(DataAgentSpec.Graph.Node.SQL_EXECUTION, DataAgentSpec.Graph.Node.PLAN_EXECUTION)
+                .addEdge(DataAgentSpec.Graph.Node.SQL_EXECUTION, DataAgentSpec.Graph.Node.SUPERVISOR)
                 .addEdge(DataAgentSpec.Graph.Node.PYTHON_GENERATION, DataAgentSpec.Graph.Node.PYTHON_EXECUTION)
                 .addEdge(DataAgentSpec.Graph.Node.PYTHON_EXECUTION, DataAgentSpec.Graph.Node.PYTHON_ANALYSIS)
-                .addEdge(DataAgentSpec.Graph.Node.PYTHON_ANALYSIS, DataAgentSpec.Graph.Node.PLAN_EXECUTION)
+                .addEdge(DataAgentSpec.Graph.Node.PYTHON_ANALYSIS, DataAgentSpec.Graph.Node.SUPERVISOR)
                 .addEdge(DataAgentSpec.Graph.Node.REPORT_GENERATION, StateGraph.END);
     }
 }

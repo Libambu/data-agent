@@ -134,3 +134,6 @@ jacoco.exec
 # =========================
 data-agent-backend/src/main/resources/dev_20240627/dev_databases.zip
 data-agent-backend/src/main/resources/dev_20240627/dev_databases/
+
+# Local data dump containing sensitive credentials
+db-data.json

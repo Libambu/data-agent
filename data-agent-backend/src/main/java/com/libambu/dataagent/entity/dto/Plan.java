@@ -47,6 +47,42 @@ public class Plan {
         return plan.getExecutionPlan().get(step - 1);
     }
 
+    /**
+     * Supervisor 模式下，把决策出的新 step 序列化回 state 中的 PLAN 字段。
+     * <p>
+     * 用于 SupervisorNode 每轮决策后，把"下一步要派给哪个 Sub-Agent + 任务参数"作为新的 ExecutionStep
+     * 追加到 Plan.executionPlan 末尾，使下游 Sub-Agent 可以继续通过 {@link #getCurrentStep(OverAllState)} 读取。
+     *
+     * @param state    当前图状态
+     * @param toolName 下一步要执行的工具节点名（SQL_GENERATION/PYTHON_GENERATION/REPORT_GENERATION）
+     * @param params   该步骤的工具参数
+     * @return 序列化后的最新 plan json
+     */
+    public static String appendStep(OverAllState state, String toolName, ToolParameters params) {
+        Plan plan;
+        try {
+            plan = getPlan(state);
+        } catch (IllegalArgumentException e) {
+            // 第一次还没有计划，构造一个空的
+            plan = new Plan();
+            plan.setThoughtProcess("Supervisor dynamic plan");
+            plan.setExecutionPlan(new ArrayList<>());
+        }
+        if (plan.getExecutionPlan() == null) {
+            plan.setExecutionPlan(new ArrayList<>());
+        }
+        ExecutionStep step = new ExecutionStep();
+        step.setStep(plan.getExecutionPlan().size() + 1);
+        step.setToolToUse(toolName);
+        step.setToolParameters(params == null ? new ToolParameters() : params);
+        plan.getExecutionPlan().add(step);
+        try {
+            return OBJECT_MAPPER.writeValueAsString(plan);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("plan json 序列化失败", e);
+        }
+    }
+
     @Data
     @NoArgsConstructor
     @AllArgsConstructor

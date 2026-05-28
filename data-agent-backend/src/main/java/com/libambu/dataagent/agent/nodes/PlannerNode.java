@@ -18,9 +18,15 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * 任务拆解节点。
+ * 任务拆解节点（草稿计划生成器）。
  * <p>
- * 根据规范化问题、Schema 与 Evidence 生成后续 SQL / Python / Report 的执行计划。
+ * 在 Supervisor 模式下，本节点的职责由"权威执行计划生成者"降级为"草稿计划生成者"：
+ * 1. 生成一份初步的整体计划，供 HumanFeedbackNode 展示给用户审核。
+ * 2. 用户批准后，真正的逐步派单交给 {@link SupervisorNode}（主管 Agent）动态决策。
+ *    Supervisor 会基于"用户问题 + 历次执行结果"在每一轮重新选择 Sub-Agent，
+ *    不再严格按本节点输出的 step 顺序执行。
+ * <p>
+ * 因此本节点输出的 Plan 主要用于：人工审核展示、最终报告生成时的"思考过程"上下文。
  */
 @Component
 public class PlannerNode implements NodeAction {

@@ -3,7 +3,7 @@ import { Client, ClientFactory } from '@a2a-js/sdk/client'
 import EvidenceRecallNodeCard from '@/components/evidence-recall-node-card.vue'
 import FeasibilityAssessmentNodeCard from '@/components/feasibility-assessment-node-card.vue'
 import HumanFeedbackNodeCard from '@/components/human-feedback-node-card.vue'
-import PlanExecutionNodeCard from '@/components/plan-execution-node-card.vue'
+import SupervisorTraceCard from '@/components/supervisor-trace-card.vue'
 import PlannerNodeCard from '@/components/planner-node-card.vue'
 import PythonAnalysisNodeCard from '@/components/python-analysis-node-card.vue'
 import PythonExecutionNodeCard from '@/components/python-execution-node-card.vue'
@@ -41,7 +41,7 @@ const NODE_COMPONENTS: Record<string, Component> = {
   [DATA_AGENT_GRAPH_NODE.FEASIBILITY_ASSESSMENT]: markRaw(FeasibilityAssessmentNodeCard),
   [DATA_AGENT_GRAPH_NODE.PLANNER]: markRaw(PlannerNodeCard),
   [DATA_AGENT_GRAPH_NODE.HUMAN_FEEDBACK]: markRaw(HumanFeedbackNodeCard),
-  [DATA_AGENT_GRAPH_NODE.PLAN_EXECUTION]: markRaw(PlanExecutionNodeCard),
+  [DATA_AGENT_GRAPH_NODE.SUPERVISOR]: markRaw(SupervisorTraceCard),
   [DATA_AGENT_GRAPH_NODE.SQL_GENERATION]: markRaw(SqlGenerationNodeCard),
   [DATA_AGENT_GRAPH_NODE.SQL_EXECUTION]: markRaw(SqlExecutionNodeCard),
   [DATA_AGENT_GRAPH_NODE.PYTHON_GENERATION]: markRaw(PythonGenerationNodeCard),
@@ -58,13 +58,13 @@ const NODE_META: Record<string, { label: string; phase: 'recall' | 'plan' | 'exe
   [DATA_AGENT_GRAPH_NODE.FEASIBILITY_ASSESSMENT]: { label: 'Feasibility',     phase: 'plan',   idx: 4 },
   [DATA_AGENT_GRAPH_NODE.PLANNER]:                { label: 'Planner',         phase: 'plan',   idx: 5 },
   [DATA_AGENT_GRAPH_NODE.HUMAN_FEEDBACK]:         { label: 'Human Feedback',  phase: 'plan',   idx: 6 },
-  [DATA_AGENT_GRAPH_NODE.PLAN_EXECUTION]:         { label: 'Plan Dispatch',   phase: 'exec',   idx: 7 },
-  [DATA_AGENT_GRAPH_NODE.SQL_GENERATION]:         { label: 'SQL Generation',  phase: 'exec',   idx: 8 },
-  [DATA_AGENT_GRAPH_NODE.SQL_EXECUTION]:          { label: 'SQL Execution',   phase: 'exec',   idx: 9 },
-  [DATA_AGENT_GRAPH_NODE.PYTHON_GENERATION]:      { label: 'Python Gen',      phase: 'exec',   idx: 10 },
-  [DATA_AGENT_GRAPH_NODE.PYTHON_EXECUTION]:       { label: 'Python Exec',     phase: 'exec',   idx: 11 },
-  [DATA_AGENT_GRAPH_NODE.PYTHON_ANALYSIS]:        { label: 'Python Analysis', phase: 'exec',   idx: 12 },
-  [DATA_AGENT_GRAPH_NODE.REPORT_GENERATION]:      { label: 'Report',          phase: 'output', idx: 13 },
+  [DATA_AGENT_GRAPH_NODE.SUPERVISOR]:             { label: '🧠 Supervisor',           phase: 'exec',   idx: 7 },
+  [DATA_AGENT_GRAPH_NODE.SQL_GENERATION]:         { label: 'SQL Sub-Agent · Gen',     phase: 'exec',   idx: 8 },
+  [DATA_AGENT_GRAPH_NODE.SQL_EXECUTION]:          { label: 'SQL Sub-Agent · Exec',    phase: 'exec',   idx: 9 },
+  [DATA_AGENT_GRAPH_NODE.PYTHON_GENERATION]:      { label: 'Python Sub-Agent · Gen',  phase: 'exec',   idx: 10 },
+  [DATA_AGENT_GRAPH_NODE.PYTHON_EXECUTION]:       { label: 'Python Sub-Agent · Exec', phase: 'exec',   idx: 11 },
+  [DATA_AGENT_GRAPH_NODE.PYTHON_ANALYSIS]:        { label: 'Python Sub-Agent · Ana',  phase: 'exec',   idx: 12 },
+  [DATA_AGENT_GRAPH_NODE.REPORT_GENERATION]:      { label: 'Report Sub-Agent',        phase: 'output', idx: 13 },
 }
 
 const DEFAULT_EXAMPLES = [
@@ -300,6 +300,9 @@ onMounted(async () => {
         <span class="appbar__crumb-sep">/</span>
         <span class="appbar__crumb appbar__crumb--accent">
           {{ orderedSteps.length ? `Run-${(currentTaskId || '').slice(0, 6) || 'new'}` : 'New Session' }}
+        </span>
+        <span class="appbar__arch">
+          <span class="appbar__arch-text">Multi-Agent · Supervisor</span>
         </span>
       </div>
 
@@ -611,11 +614,12 @@ onMounted(async () => {
             <rect x="6" y="178" width="188" height="100" rx="6" fill="rgba(249,171,0,0.06)" stroke="rgba(249,171,0,0.4)" stroke-width="0.6" />
             <text x="100" y="190" class="mm-phase mm-phase--exec">EXECUTION</text>
 
-            <!-- Dispatch -->
-            <rect :x="70" :y="196" width="60" height="14" rx="3"
-              :class="['mm-node', `mm-node--${stepStatusMap[DATA_AGENT_GRAPH_NODE.PLAN_EXECUTION]}`, { 'mm-node--active': activeNode === DATA_AGENT_GRAPH_NODE.PLAN_EXECUTION }]"
+            <!-- Dispatch (中枢指挥) -->
+            <rect :x="60" :y="195" width="80" height="18" rx="4"
+              :class="['mm-node', 'mm-node--hub', `mm-node--${stepStatusMap[DATA_AGENT_GRAPH_NODE.SUPERVISOR]}`, { 'mm-node--active': activeNode === DATA_AGENT_GRAPH_NODE.SUPERVISOR }]"
             />
-            <text x="100" y="206" class="mm-text">Dispatch</text>
+            <text x="100" y="203" class="mm-text mm-text--hub">Supervisor</text>
+            <text x="100" y="210" class="mm-text mm-text--xs">multi-agent hub</text>
 
             <!-- SQL Branch -->
             <rect :x="14" :y="220" width="50" height="12" rx="3"
@@ -752,6 +756,25 @@ onMounted(async () => {
 
 .appbar__crumb--muted { color: var(--text-3); }
 .appbar__crumb--accent { color: var(--color-accent); }
+
+.appbar__arch {
+  margin-left: 10px;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  font-family: 'Roboto Mono', 'SF Mono', ui-monospace, monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+}
+
+.appbar__arch-text {
+  font-weight: 600;
+  color: #475569;
+}
 
 .appbar__crumb-sep {
   color: var(--text-3);
@@ -1661,6 +1684,18 @@ onMounted(async () => {
 }
 
 .mm-text--sm { font-size: 5px; }
+.mm-text--xs { font-size: 3.4px; fill: rgba(60, 64, 67, 0.55); letter-spacing: 0.04em; }
+
+/* Supervisor 中枢节点：朴素加粗描边 */
+.mm-node--hub {
+  stroke-width: 1;
+}
+
+.mm-text--hub {
+  fill: #3c4043;
+  font-weight: 700;
+  font-size: 5.5px;
+}
 
 .ws-footer {
   margin-top: auto;

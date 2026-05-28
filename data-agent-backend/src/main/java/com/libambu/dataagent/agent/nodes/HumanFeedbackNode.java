@@ -31,9 +31,9 @@ public class HumanFeedbackNode implements NodeAction {
 
         Boolean approved = state.value(DataAgentSpec.Graph.StateKey.HumanReview.CONFIRMATION_APPROVED, false);
         if (approved) {
-            log.info("[HumanFeedbackNode] 用户已批准计划, 进入执行节点");
+            log.info("[HumanFeedbackNode] 用户已批准计划, 进入 Supervisor 节点");
             return Map.of(
-                    DataAgentSpec.Graph.StateKey.HumanReview.NEXT_NODE, DataAgentSpec.Graph.Node.PLAN_EXECUTION
+                    DataAgentSpec.Graph.StateKey.HumanReview.NEXT_NODE, DataAgentSpec.Graph.Node.SUPERVISOR
             );
         } else {
             String feedbackContent = state.value(DataAgentSpec.Graph.StateKey.HumanReview.CONFIRMATION_FEEDBACK, "");

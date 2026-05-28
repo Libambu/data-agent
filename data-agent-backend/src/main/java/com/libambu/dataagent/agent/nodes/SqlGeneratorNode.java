@@ -15,6 +15,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -38,38 +39,55 @@ public class SqlGeneratorNode implements NodeAction {
 
     @Override
     public Map<String, Object> apply(OverAllState state) throws Exception {
-        Plan.ExecutionStep step = Plan.getCurrentStep(state);
-        String instruction = step.getToolParameters().getInstruction();
-        if (instruction == null || instruction.isBlank()) {
-            throw new RuntimeException("SQL 生成步骤 instruction 为空");
+        // Supervisor 派单时已经写好 CURRENT_STEP，这里只读，用作错误归档时的 step 标识。
+        Integer currentStep = state.value(DataAgentSpec.Graph.StateKey.Planning.CURRENT_STEP, 1);
+        try {
+            Plan.ExecutionStep step = Plan.getCurrentStep(state);
+            String instruction = step.getToolParameters().getInstruction();
+            if (instruction == null || instruction.isBlank()) {
+                throw new RuntimeException("SQL 生成步骤 instruction 为空");
+            }
+
+            String tableRelation = state.value(DataAgentSpec.Graph.StateKey.Recall.TABLE_RELATION, "");
+            Schema schema = objectMapper.readValue(tableRelation, Schema.class);
+            String rewriteQuery = state.value(DataAgentSpec.Graph.StateKey.Recall.REWRITE_QUERY, "");
+            String evidence = state.value(DataAgentSpec.Graph.StateKey.Recall.EVIDENCE, "");
+            String dialect = "mysql";
+
+            Map<String, Object> vars = new LinkedHashMap<>();
+            vars.put("dialect", dialect);
+            vars.put("question", rewriteQuery);
+            vars.put("schema_info", schema.buildSchemePrompt());
+            vars.put("evidence", evidence);
+            vars.put("execution_description", instruction);
+
+            String sqlPrompt = promptManager.getNewSqlGeneratorPromptTemplate().render(vars);
+
+            log.info("[SqlGeneratorNode] SQL 生成提示词: {}", sqlPrompt);
+
+            String sql = deepseekClient
+                    .prompt()
+                    .options(OpenAiChatOptions.builder()
+                            .extraBody(Map.of("enable_thinking", false)))
+                    .system(sqlPrompt)
+                    .call()
+                    .content();
+
+            log.info("[SqlGeneratorNode] 生成 SQL: {}", sql);
+            return Map.of(DataAgentSpec.Graph.StateKey.Execution.SQL_GENERATION_RESULT,
+                    MarkdownParserUtil.extractRawText(sql));
+        } catch (Exception ex) {
+            // 兜底：不再向上抛出，避免整张图崩溃；
+            // 把错误写入 EXECUTION_OUTPUT.step_N_error，下一轮 Supervisor 会读到并决定重试或换路径。
+            log.error("[SqlGeneratorNode] SQL 生成失败 step={}, err={}", currentStep, ex.getMessage(), ex);
+            Map<String, String> deltaOutput = new HashMap<>();
+            deltaOutput.put("step_" + currentStep + "_error",
+                    "SQL_GENERATION 失败: " + ex.getClass().getSimpleName() + " - " + ex.getMessage());
+            Map<String, Object> result = new HashMap<>();
+            // 清空旧值（put null 触发框架删除），避免下游 SqlExecuteNode 误用上一轮 SQL 文本
+            result.put(DataAgentSpec.Graph.StateKey.Execution.SQL_GENERATION_RESULT, null);
+            result.put(DataAgentSpec.Graph.StateKey.Planning.EXECUTION_OUTPUT, deltaOutput);
+            return result;
         }
-
-        String tableRelation = state.value(DataAgentSpec.Graph.StateKey.Recall.TABLE_RELATION, "");
-        Schema schema = objectMapper.readValue(tableRelation, Schema.class);
-        String rewriteQuery = state.value(DataAgentSpec.Graph.StateKey.Recall.REWRITE_QUERY, "");
-        String evidence = state.value(DataAgentSpec.Graph.StateKey.Recall.EVIDENCE, "");
-        String dialect = "mysql";
-
-        Map<String, Object> vars = new LinkedHashMap<>();
-        vars.put("dialect", dialect);
-        vars.put("question", rewriteQuery);
-        vars.put("schema_info", schema.buildSchemePrompt());
-        vars.put("evidence", evidence);
-        vars.put("execution_description", instruction);
-
-        String sqlPrompt = promptManager.getNewSqlGeneratorPromptTemplate().render(vars);
-
-        log.info("[SqlGeneratorNode] SQL 生成提示词: {}", sqlPrompt);
-
-        String sql = deepseekClient
-                .prompt()
-                .options(OpenAiChatOptions.builder()
-                        .extraBody(Map.of("enable_thinking", false)))
-                .system(sqlPrompt)
-                .call()
-                .content();
-
-        log.info("[SqlGeneratorNode] 生成 SQL: {}", sql);
-        return Map.of(DataAgentSpec.Graph.StateKey.Execution.SQL_GENERATION_RESULT, MarkdownParserUtil.extractRawText(sql));
     }
 }
