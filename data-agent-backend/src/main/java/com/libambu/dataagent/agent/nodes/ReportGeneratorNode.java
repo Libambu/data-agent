@@ -2,7 +2,6 @@ package com.libambu.dataagent.agent.nodes;
 
 import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.action.NodeAction;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.libambu.dataagent.agent.prompt.PromptManager;
 import com.libambu.dataagent.entity.constant.DataAgentSpec;
 import com.libambu.dataagent.entity.dto.Plan;
@@ -38,8 +37,6 @@ public class ReportGeneratorNode implements NodeAction {
                     { "type": "bar", "data": [120, 200] }
                 ]
             }""";
-
-    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Autowired
     @Qualifier("deepseekClient")
@@ -139,11 +136,24 @@ public class ReportGeneratorNode implements NodeAction {
             String stepKey = entry.getKey();
             String stepResult = entry.getValue();
 
-            // 过滤掉以 _analysis 结尾的 key
-            if (stepKey.endsWith("_analysis")) {
+            // 过滤掉非“主结果”的系统态附加 key：
+            //   - *_analysis ：Python 分析结果，会在主步骤里以 "Python 分析结果" 形式补充展示
+            //   - *_error / *_sqlgen_error / *_sqlexec_error / *_pygen_error / *_pyexec_error / *_pyanalyze_error
+            //     ：各阶段失败原因，仅给 Supervisor 决策使用，不应进入用户报告
+            //   - *_sqlexec_skipped / *_pyexec_skipped / *_pyanalyze_skipped
+            //     ：因上游失败而跳过的标记，同样不进入报告
+            if (stepKey.endsWith("_analysis")
+                    || stepKey.endsWith("_error")
+                    || stepKey.endsWith("_sqlgen_error")
+                    || stepKey.endsWith("_sqlexec_error")
+                    || stepKey.endsWith("_sqlexec_skipped")
+                    || stepKey.endsWith("_pygen_error")
+                    || stepKey.endsWith("_pyexec_error")
+                    || stepKey.endsWith("_pyexec_skipped")
+                    || stepKey.endsWith("_pyanalyze_error")
+                    || stepKey.endsWith("_pyanalyze_skipped")) {
                 continue;
             }
-
             sb.append("### ").append(stepKey).append("\n");
 
             // 尝试获取对应的步骤描述

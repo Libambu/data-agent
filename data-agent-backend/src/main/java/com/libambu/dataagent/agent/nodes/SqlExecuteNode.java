@@ -43,11 +43,13 @@ public class SqlExecuteNode implements NodeAction {
         String sql = state.value(DataAgentSpec.Graph.StateKey.Execution.SQL_GENERATION_RESULT, "");
 
         // 上游 SQL 生成失败时（结果为空），直接归档错误，避免空 SQL 进入数据库执行。
+        // 注意：此处不再写 step_N_error，避免把上游 SqlGeneratorNode 写入的真实失败原因覆盖掉；
+        // 改为写一个独立的 step_N_sqlexec_skipped 标记给 Supervisor 看到。
         if (sql == null || sql.isBlank()) {
             log.warn("[SqlExecuteNode] 上游 SQL 为空，跳过执行 step={}", currentStep);
             Map<String, String> deltaOutput = new HashMap<>();
-            deltaOutput.put("step_" + currentStep + "_error",
-                    "SQL_EXECUTION 跳过：上游未生成有效 SQL");
+            deltaOutput.put("step_" + currentStep + "_sqlexec_skipped",
+                    "SQL_EXECUTION 跳过：上游未生成有效 SQL（请查看 step_" + currentStep + "_sqlgen_error 了解根因）");
             Map<String, Object> result = new HashMap<>();
             result.put(DataAgentSpec.Graph.StateKey.Planning.EXECUTION_OUTPUT, deltaOutput);
             return result;
@@ -93,7 +95,11 @@ public class SqlExecuteNode implements NodeAction {
             String errSummary = "SQL_EXECUTION 失败: " + ex.getClass().getSimpleName()
                     + " - " + ex.getMessage()
                     + " | 失败的 SQL: " + sql;
+            // 同时写入通用 step_N_error 与 step_N_sqlexec_error：
+            //   - step_N_error 让 Supervisor 通用失败判定能识别这一步失败；
+            //   - step_N_sqlexec_error 独立保留 SQL 执行阶段的错误，与 step_N_sqlgen_error 互不覆盖。
             deltaOutput.put("step_" + currentStep + "_error", errSummary);
+            deltaOutput.put("step_" + currentStep + "_sqlexec_error", errSummary);
             Map<String, Object> result = new HashMap<>();
             result.put(DataAgentSpec.Graph.StateKey.Planning.EXECUTION_OUTPUT, deltaOutput);
             // 注意：故意不清空 SQL_EXECUTION_RESULT，保留之前成功的数据，

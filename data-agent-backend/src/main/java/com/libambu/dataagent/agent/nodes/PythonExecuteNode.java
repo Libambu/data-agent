@@ -28,11 +28,12 @@ public class PythonExecuteNode implements NodeAction {
         Integer currentStep = state.value(DataAgentSpec.Graph.StateKey.Planning.CURRENT_STEP, 1);
         String pythonCode = state.value(DataAgentSpec.Graph.StateKey.Execution.PYTHON_GENERATION_RESULT, "");
 
-        // 上游 Python 代码生成失败 → 跳过执行，归档错误
+        // 上游 Python 代码生成失败 → 跳过执行，归档为 _pyexec_skipped。
+        // 注意：此处故意不写 step_N_error，避免覆盖 PythonGeneratorNode 已写入的 _pygen_error 根因。
         if (pythonCode == null || pythonCode.isBlank()) {
             log.warn("[PythonExecuteNode] 上游 Python 代码为空，跳过执行 step={}", currentStep);
             Map<String, String> deltaOutput = new HashMap<>();
-            deltaOutput.put("step_" + currentStep + "_error",
+            deltaOutput.put("step_" + currentStep + "_pyexec_skipped",
                     "PYTHON_EXECUTION 跳过：上游未生成有效 Python 代码");
             Map<String, Object> result = new HashMap<>();
             result.put(DataAgentSpec.Graph.StateKey.Planning.EXECUTION_OUTPUT, deltaOutput);
@@ -61,7 +62,8 @@ public class PythonExecuteNode implements NodeAction {
             // 这里把 success=false 也作为"执行错误"上报给 Supervisor，避免下游 Analyze 误以为成功。
             if (!output.isSuccess()) {
                 Map<String, String> deltaOutput = new HashMap<>();
-                deltaOutput.put("step_" + currentStep + "_error",
+                // 阶段化错误 key：与 SQL 链路对齐，避免后续 PythonAnalyzeNode 在同一 step 上覆盖根因
+                deltaOutput.put("step_" + currentStep + "_pyexec_error",
                         "PYTHON_EXECUTION 运行失败: " + truncate(String.valueOf(output.getOutput()), 600));
                 Map<String, Object> ret = new HashMap<>();
                 ret.put(DataAgentSpec.Graph.StateKey.Execution.PYTHON_EXECUTION_RESULT, output);
@@ -74,7 +76,7 @@ public class PythonExecuteNode implements NodeAction {
             log.error("[PythonExecuteNode] Python 执行节点抛出异常 step={}, err={}",
                     currentStep, ex.getMessage(), ex);
             Map<String, String> deltaOutput = new HashMap<>();
-            deltaOutput.put("step_" + currentStep + "_error",
+            deltaOutput.put("step_" + currentStep + "_pyexec_error",
                     "PYTHON_EXECUTION 异常: " + ex.getClass().getSimpleName() + " - " + ex.getMessage());
             Map<String, Object> ret = new HashMap<>();
             ret.put(DataAgentSpec.Graph.StateKey.Planning.EXECUTION_OUTPUT, deltaOutput);

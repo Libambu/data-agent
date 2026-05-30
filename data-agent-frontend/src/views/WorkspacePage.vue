@@ -21,6 +21,7 @@ import {
   DATA_AGENT_GRAPH_NODE,
   DATA_AGENT_MESSAGE_METADATA,
   DATA_AGENT_NODE_ORDER,
+  DATA_AGENT_STATE_KEY_PLANNING,
 } from '@/constants/data-agent-graph-spec'
 import { request } from '@/utils/request'
 
@@ -28,11 +29,27 @@ const router = useRouter()
 
 interface GraphStep {
   id: string
+  /** 图节点名（artifact name），例如 SQL_GENERATE_NODE。多轮调度时该名重复。 */
   name: string
+  /** 唯一 key：普通节点 = name；SubAgent 节点 = `${name}#${iteration}`。用于 steps 去重。 */
+  key: string
+  /** 调度轮次（= Supervisor 派发该子 Agent 时的 PLAN_CURRENT_STEP）。非 SubAgent 节点为 0。 */
+  iteration: number
   content: string
   data?: Record<string, unknown>
   status: 'pending' | 'success'
 }
+
+// SubAgent 类节点：多轮被 Supervisor 调度时，每轮要独立成卡，
+// 避免“同 name 合并”导致后一轮数据覆盖前一轮。
+const SUB_AGENT_NODES = new Set<string>([
+  DATA_AGENT_GRAPH_NODE.SQL_GENERATION,
+  DATA_AGENT_GRAPH_NODE.SQL_EXECUTION,
+  DATA_AGENT_GRAPH_NODE.PYTHON_GENERATION,
+  DATA_AGENT_GRAPH_NODE.PYTHON_EXECUTION,
+  DATA_AGENT_GRAPH_NODE.PYTHON_ANALYSIS,
+  DATA_AGENT_GRAPH_NODE.REPORT_GENERATION,
+])
 
 const NODE_COMPONENTS: Record<string, Component> = {
   [DATA_AGENT_GRAPH_NODE.EVIDENCE_RECALL]: markRaw(EvidenceRecallNodeCard),
@@ -101,36 +118,103 @@ const upsertStep = (
   status: GraphStep['status'],
   data: Record<string, unknown> = {},
 ) => {
-  const existing = steps.find((step) => step.name === name)
-  if (existing) {
-    existing.content += chunk
-    existing.status = status
-    existing.data = { ...existing.data, ...data }
+  const isSubAgent = SUB_AGENT_NODES.has(name)
+
+  // 普通节点（非 SubAgent）：name 即 key，直接 upsert。
+  if (!isSubAgent) {
+    const existing = steps.find((step) => step.key === name)
+    if (existing) {
+      existing.content += chunk
+      existing.status = status
+      existing.data = { ...existing.data, ...data }
+      return
+    }
+    steps.push({
+      id: crypto.randomUUID(),
+      name,
+      key: name,
+      iteration: 0,
+      data,
+      content: chunk,
+      status,
+    })
     return
   }
+
+  // ===== SubAgent 节点：一轮调度 = 一张卡 =====
+  // 后端事件顺序就一轮调度而言是：
+  //   【STREAMING chunk1, chunk2, ..., chunkN】 → 【FINISHED（带 PLAN_CURRENT_STEP）】
+  // 要点：只要该 name 上还有“未完成”的卡，不管是 STREAMING 还是 FINISHED，都只能往该卡上合并，
+  // 不能另起烉灶（避免【流式期间用前端自增号、FINISHED 期间用后端全局步骤号】造成错位、原卡卡死 pending）。
+  const sameName = steps.filter((s) => s.name === name)
+  const lastPending = [...sameName].reverse().find((s) => s.status === 'pending')
+
+  // 后端只有在 GRAPH_NODE_FINISHED 帧才会携带 PLAN_CURRENT_STEP（DataPart 中）。
+  // 该值是 Supervisor 调度的全局步骤号，用于开发者/用户识别“这是第几轮调度”。
+  const realStepFromState = Number(
+    (data?.[DATA_AGENT_STATE_KEY_PLANNING.CURRENT_STEP] as number | string | undefined) ?? 0,
+  )
+  const hasRealStep = Number.isFinite(realStepFromState) && realStepFromState > 0
+
+  if (lastPending) {
+    // 本轮已有未完成卡 → 累加。如果是 FINISHED 帧，同时将 iteration 从临时编号升级为后端真实步骤号。
+    lastPending.content += chunk
+    lastPending.status = status
+    lastPending.data = { ...lastPending.data, ...data }
+    if (hasRealStep) {
+      lastPending.iteration = realStepFromState
+      lastPending.key = `${name}#${realStepFromState}`
+    }
+    return
+  }
+
+  // 该 name 所有卡都已 success：这是新一轮调度的首个事件。
+  // - FINISHED 帧（带 step）：用后端真实步骤号作 iteration。
+  // - STREAMING 首 chunk（未带 step）：用“已有最大 iteration + 1”临时叠加，随后 FINISHED 会纶正。
+  const nextIteration = hasRealStep
+    ? realStepFromState
+    : sameName.reduce((max, s) => (s.iteration > max ? s.iteration : max), 0) + 1
   steps.push({
     id: crypto.randomUUID(),
     name,
-    data: data,
+    key: `${name}#${nextIteration}`,
+    iteration: nextIteration,
+    data,
     content: chunk,
-    status: status,
+    status,
   })
 }
 
 const isRunning = ref(false)
 
 const orderedSteps = computed(() => {
-  return DATA_AGENT_NODE_ORDER
-    .map((name) => steps.find((step) => step.name === name))
-    .filter((step): step is GraphStep => Boolean(step))
+  // 以骨架顺序为主；同一个节点名可能有多个 SubAgent 实例（多轮派发），按 iteration 升序依次出现。
+  const result: GraphStep[] = []
+  for (const node of DATA_AGENT_NODE_ORDER) {
+    const matched = steps
+      .filter((s) => s.name === node)
+      .sort((a, b) => a.iteration - b.iteration)
+    result.push(...matched)
+  }
+  return result
 })
+
+// 同一节点出现多次时的调度轮次信息，仅用于在卡片头部展示“调度 #N”徽标。
+const stepIterationBadge = (step: GraphStep) => {
+  if (!SUB_AGENT_NODES.has(step.name)) return ''
+  const sameNameTotal = steps.filter((s) => s.name === step.name).length
+  if (sameNameTotal <= 1 && step.iteration <= 1) return ''
+  return `调度 #${step.iteration}`
+}
 
 const completedStepCount = computed(
   () => orderedSteps.value.filter((step) => step.status === 'success').length,
 )
 const progressPercentage = computed(() => {
   if (isRunning.value && !orderedSteps.value.length) return 8
-  return Math.round((completedStepCount.value / DATA_AGENT_NODE_ORDER.length) * 100)
+  // 分母取当前已出现的总 step 数（含多轮 SubAgent），避免在仅走 SQL+Report 路径下永远到不了 100%。
+  if (!orderedSteps.value.length) return 0
+  return Math.round((completedStepCount.value / orderedSteps.value.length) * 100)
 })
 const isClientReady = computed(() => Boolean(client.value))
 const canSubmit = computed(() => Boolean((userInput.value ?? '').trim()) && isClientReady.value && !isRunning.value)
@@ -147,12 +231,18 @@ const timelineStatusText = computed(() => {
   return '等待开始'
 })
 
-// 步骤状态映射，给 Rail / MiniMap 使用
+// 步骤状态映射，给 Rail / MiniMap 使用。
+// 同一节点可能有多个实例（多轮 SubAgent），这里采取“最新一轮”的状态作为该节点的汇总状态。
 const stepStatusMap = computed(() => {
   const map: Record<string, GraphStep['status'] | 'idle'> = {}
   for (const node of DATA_AGENT_NODE_ORDER) {
-    const step = steps.find((s) => s.name === node)
-    map[node] = step ? step.status : 'idle'
+    const matched = steps.filter((s) => s.name === node)
+    if (!matched.length) {
+      map[node] = 'idle'
+      continue
+    }
+    const latest = matched.reduce((a, b) => (a.iteration >= b.iteration ? a : b))
+    map[node] = latest.status
   }
   return map
 })
@@ -265,9 +355,13 @@ const goHome = () => {
   router.push('/')
 }
 
-// 滚动到节点
+// 滚动到节点（优先跳到该节点的「最新一轮」实例，让 Pipeline / MiniMap 点击能定位到最近发生的调度）
 const scrollToNode = (nodeName: string) => {
-  const el = document.getElementById(`node-${nodeName}`)
+  const matched = steps
+    .filter((s) => s.name === nodeName)
+    .sort((a, b) => b.iteration - a.iteration)
+  const targetKey = matched[0]?.key ?? nodeName
+  const el = document.getElementById(`node-${targetKey}`)
   if (el) {
     el.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
@@ -324,7 +418,7 @@ onMounted(async () => {
       <aside class="rail">
         <div class="rail__head">
           <span class="rail__label">PIPELINE</span>
-          <span class="rail__count">{{ completedStepCount }}/{{ DATA_AGENT_NODE_ORDER.length }}</span>
+          <span class="rail__count">{{ completedStepCount }}/{{ orderedSteps.length || DATA_AGENT_NODE_ORDER.length }}</span>
         </div>
 
         <div class="rail__list">
@@ -442,7 +536,7 @@ onMounted(async () => {
             <div
               v-for="(step, i) in orderedSteps"
               :key="step.id"
-              :id="`node-${step.name}`"
+              :id="`node-${step.key}`"
               class="trace-row"
               :class="`trace-row--${NODE_META[step.name]?.phase}`"
             >
@@ -457,6 +551,13 @@ onMounted(async () => {
                 ></span>
               </div>
               <div class="trace-row__card">
+                <!-- multi-agent 调度徽标：当同一 SubAgent 被 Supervisor 多轮派发时，
+                     在卡片正上方挂一条 "Supervisor → 调度 #N" 的提示，体现多 Agent 协作。 -->
+                <div v-if="stepIterationBadge(step)" class="dispatch-badge">
+                  <span class="dispatch-badge__from">SUPERVISOR</span>
+                  <span class="dispatch-badge__arrow">→</span>
+                  <span class="dispatch-badge__round">{{ stepIterationBadge(step) }}</span>
+                </div>
                 <component
                   v-if="NODE_COMPONENTS[step.name]"
                   :is="NODE_COMPONENTS[step.name]"
@@ -468,8 +569,6 @@ onMounted(async () => {
               </div>
             </div>
           </div>
-
-          <!-- 人工输入面板 -->
           <div v-if="awaitingConfirmation" class="human-panel">
             <div class="human-panel__head">
               <div class="human-panel__icon">
@@ -657,6 +756,19 @@ onMounted(async () => {
             <line x1="100" y1="210" x2="100" y2="220" stroke="rgba(60,64,67,0.28)" stroke-width="0.6" />
             <line x1="100" y1="216" x2="40" y2="220" stroke="rgba(60,64,67,0.28)" stroke-width="0.6" />
             <line x1="100" y1="216" x2="160" y2="220" stroke="rgba(60,64,67,0.28)" stroke-width="0.6" />
+
+            <!-- Multi-agent 调度回路：SQL/Py 子 Agent 完成一轮后会回到 Supervisor 重新决策。
+                 用紫色弧线虚箭头体现"循环派单"的本质，让 multi-agent 一眼可辨。 -->
+            <defs>
+              <marker id="mm-loop-arrow" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
+                <path d="M0,0 L6,3 L0,6 Z" fill="#9b72cb" />
+              </marker>
+            </defs>
+            <!-- SQL Exec → Supervisor 回路（左侧弯回） -->
+            <path d="M 14,242 C 4,224 4,210 60,206" fill="none" stroke="#9b72cb" stroke-width="0.7" stroke-dasharray="2 2" marker-end="url(#mm-loop-arrow)" opacity="0.85" />
+            <!-- Py Analyze → Supervisor 回路（右侧弯回） -->
+            <path d="M 124,258 C 178,250 184,214 140,206" fill="none" stroke="#9b72cb" stroke-width="0.7" stroke-dasharray="2 2" marker-end="url(#mm-loop-arrow)" opacity="0.85" />
+            <text x="100" y="278" class="mm-text mm-text--xs" style="fill: #9b72cb; font-weight: 700;">↻ multi-agent dispatch loop</text>
           </svg>
         </div>
 
@@ -1300,6 +1412,37 @@ onMounted(async () => {
 
 .trace-row__card {
   min-width: 0;
+}
+
+/* multi-agent 调度徽标：仅在同一 SubAgent 被 Supervisor 多轮派发时出现，
+   颜色与 Planning 阶段（紫色 #9b72cb）保持一致，以呼应 Supervisor 中枢的视觉语义 */
+.dispatch-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  padding: 3px 9px;
+  border: 1px solid rgba(155, 114, 203, 0.32);
+  border-radius: 999px;
+  background: rgba(155, 114, 203, 0.08);
+  font-family: 'Roboto Mono', 'SF Mono', ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #6b4d9a;
+}
+
+.dispatch-badge__from {
+  color: #9b72cb;
+}
+
+.dispatch-badge__arrow {
+  color: rgba(155, 114, 203, 0.65);
+  font-weight: 600;
+}
+
+.dispatch-badge__round {
+  color: #4a3470;
 }
 
 /* ----- Human Panel ----- */

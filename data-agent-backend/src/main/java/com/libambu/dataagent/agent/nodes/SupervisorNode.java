@@ -157,12 +157,28 @@ public class SupervisorNode implements NodeAction {
                 DataAgentSpec.Graph.StateKey.Planning.EXECUTION_OUTPUT, Object.class
         ).orElse(new HashMap<>());
 
-        // 最后一步是否失败（用于决定是否附加"最近产出"）
+        // 最后一步是否失败（用于决定是否附加“最近产出”）
         Plan.ExecutionStep lastStep = history.get(history.size() - 1);
-        String lastStepErrKey = "step_" + history.size() + "_error";
-        boolean lastStepFailed = executionOutput.containsKey(lastStepErrKey);
+        int lastStepNo = history.size();
+        String lastStepErrKey = "step_" + lastStepNo + "_error";
+        String lastStepSqlGenErrKey = "step_" + lastStepNo + "_sqlgen_error";
+        String lastStepSqlExecErrKey = "step_" + lastStepNo + "_sqlexec_error";
+        String lastStepSqlExecSkipKey = "step_" + lastStepNo + "_sqlexec_skipped";
+        String lastStepPyGenErrKey = "step_" + lastStepNo + "_pygen_error";
+        String lastStepPyExecErrKey = "step_" + lastStepNo + "_pyexec_error";
+        String lastStepPyExecSkipKey = "step_" + lastStepNo + "_pyexec_skipped";
+        String lastStepPyAnalyzeErrKey = "step_" + lastStepNo + "_pyanalyze_error";
+        String lastStepPyAnalyzeSkipKey = "step_" + lastStepNo + "_pyanalyze_skipped";
+        boolean lastStepFailed = executionOutput.containsKey(lastStepErrKey)
+                || executionOutput.containsKey(lastStepSqlGenErrKey)
+                || executionOutput.containsKey(lastStepSqlExecErrKey)
+                || executionOutput.containsKey(lastStepSqlExecSkipKey)
+                || executionOutput.containsKey(lastStepPyGenErrKey)
+                || executionOutput.containsKey(lastStepPyExecErrKey)
+                || executionOutput.containsKey(lastStepPyExecSkipKey)
+                || executionOutput.containsKey(lastStepPyAnalyzeErrKey)
+                || executionOutput.containsKey(lastStepPyAnalyzeSkipKey);
         String lastStepTool = lastStep.getToolToUse() == null ? "" : lastStep.getToolToUse();
-
         for (int i = 0; i < history.size(); i++) {
             Plan.ExecutionStep s = history.get(i);
             int stepNo = i + 1;
@@ -170,10 +186,47 @@ public class SupervisorNode implements NodeAction {
             if (s.getToolParameters() != null && s.getToolParameters().getInstruction() != null) {
                 sb.append(" | 指令: ").append(s.getToolParameters().getInstruction());
             }
-            // 显式标注该步是否失败，让 Supervisor 直观看到
-            String errKey = "step_" + stepNo + "_error";
-            if (executionOutput.containsKey(errKey)) {
-                sb.append(" | ❌ 失败: ").append(truncate(executionOutput.get(errKey), 600));
+            // 显式标注该步是否失败，让 Supervisor 直观看到。
+            // 优先展示阶段化错误（sqlgen/sqlexec/skipped 及 pygen/pyexec/pyanalyze），最后才回退到通用 step_N_error，
+            // 避免同一步后续节点覆盖让 Supervisor 看不到生成阶段失败的真正根因。
+            String sqlGenErr = executionOutput.get("step_" + stepNo + "_sqlgen_error");
+            String sqlExecErr = executionOutput.get("step_" + stepNo + "_sqlexec_error");
+            String sqlExecSkip = executionOutput.get("step_" + stepNo + "_sqlexec_skipped");
+            String pyGenErr = executionOutput.get("step_" + stepNo + "_pygen_error");
+            String pyExecErr = executionOutput.get("step_" + stepNo + "_pyexec_error");
+            String pyExecSkip = executionOutput.get("step_" + stepNo + "_pyexec_skipped");
+            String pyAnalyzeErr = executionOutput.get("step_" + stepNo + "_pyanalyze_error");
+            String pyAnalyzeSkip = executionOutput.get("step_" + stepNo + "_pyanalyze_skipped");
+            String genericErr = executionOutput.get("step_" + stepNo + "_error");
+            if (sqlGenErr != null) {
+                sb.append(" | ❌ SQL 生成失败: ").append(truncate(sqlGenErr, 500));
+            }
+            if (sqlExecErr != null) {
+                sb.append(" | ❌ SQL 执行失败: ").append(truncate(sqlExecErr, 500));
+            }
+            if (sqlExecSkip != null) {
+                sb.append(" | ⏭ SQL 执行跳过: ").append(truncate(sqlExecSkip, 200));
+            }
+            if (pyGenErr != null) {
+                sb.append(" | ❌ Python 生成失败: ").append(truncate(pyGenErr, 500));
+            }
+            if (pyExecErr != null) {
+                sb.append(" | ❌ Python 执行失败: ").append(truncate(pyExecErr, 600));
+            }
+            if (pyExecSkip != null) {
+                sb.append(" | ⏭ Python 执行跳过: ").append(truncate(pyExecSkip, 200));
+            }
+            if (pyAnalyzeErr != null) {
+                sb.append(" | ❌ Python 分析失败: ").append(truncate(pyAnalyzeErr, 500));
+            }
+            if (pyAnalyzeSkip != null) {
+                sb.append(" | ⏭ Python 分析跳过: ").append(truncate(pyAnalyzeSkip, 200));
+            }
+            if (sqlGenErr == null && sqlExecErr == null && sqlExecSkip == null
+                    && pyGenErr == null && pyExecErr == null && pyExecSkip == null
+                    && pyAnalyzeErr == null && pyAnalyzeSkip == null
+                    && genericErr != null) {
+                sb.append(" | ❌ 失败: ").append(truncate(genericErr, 600));
             }
             sb.append('\n');
         }

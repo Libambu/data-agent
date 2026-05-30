@@ -81,7 +81,10 @@ public class PythonGeneratorNode implements NodeAction {
             log.error("[PythonGeneratorNode] Python 代码生成失败 step={}, err={}",
                     currentStep, ex.getMessage(), ex);
             Map<String, String> deltaOutput = new HashMap<>();
-            deltaOutput.put("step_" + currentStep + "_error",
+            // 阶段化错误 key：与 SQL 链路（_sqlgen_error/_sqlexec_error）对齐，
+            // 避免后续 PythonExecuteNode/PythonAnalyzeNode 在同一个 step 上写 _error 时
+            // 通过 MERGE 策略覆盖掉真正的根因（Python 代码生成失败）。
+            deltaOutput.put("step_" + currentStep + "_pygen_error",
                     "PYTHON_GENERATION 失败: " + ex.getClass().getSimpleName() + " - " + ex.getMessage());
             Map<String, Object> result = new HashMap<>();
             // 清空旧值（put null 触发框架删除），避免下游 PythonExecuteNode 误用残留代码

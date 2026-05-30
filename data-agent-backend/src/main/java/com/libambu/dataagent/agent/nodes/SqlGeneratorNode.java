@@ -78,11 +78,16 @@ public class SqlGeneratorNode implements NodeAction {
                     MarkdownParserUtil.extractRawText(sql));
         } catch (Exception ex) {
             // 兜底：不再向上抛出，避免整张图崩溃；
-            // 把错误写入 EXECUTION_OUTPUT.step_N_error，下一轮 Supervisor 会读到并决定重试或换路径。
+            // 把错误写入 EXECUTION_OUTPUT，下一轮 Supervisor 会读到并决定重试或换路径。
+            // 注意：同时写入 step_N_error 与 step_N_sqlgen_error 两个 key——
+            //   - step_N_error 用于通用失败标记（兼容旧路径与 Supervisor 的失败判定）；
+            //   - step_N_sqlgen_error 单独保留 SQL 生成阶段的错误信息，避免后续
+            //     SqlExecuteNode 因 SQL 为空再次写 step_N_error 时把"真正的根因"覆盖掉。
             log.error("[SqlGeneratorNode] SQL 生成失败 step={}, err={}", currentStep, ex.getMessage(), ex);
+            String errSummary = "SQL_GENERATION 失败: " + ex.getClass().getSimpleName() + " - " + ex.getMessage();
             Map<String, String> deltaOutput = new HashMap<>();
-            deltaOutput.put("step_" + currentStep + "_error",
-                    "SQL_GENERATION 失败: " + ex.getClass().getSimpleName() + " - " + ex.getMessage());
+            deltaOutput.put("step_" + currentStep + "_error", errSummary);
+            deltaOutput.put("step_" + currentStep + "_sqlgen_error", errSummary);
             Map<String, Object> result = new HashMap<>();
             // 清空旧值（put null 触发框架删除），避免下游 SqlExecuteNode 误用上一轮 SQL 文本
             result.put(DataAgentSpec.Graph.StateKey.Execution.SQL_GENERATION_RESULT, null);

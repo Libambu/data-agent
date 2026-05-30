@@ -50,7 +50,8 @@ public class PythonAnalyzeNode implements NodeAction {
             if (pythonOutputOpt.isEmpty()) {
                 log.warn("[PythonAnalyzeNode] 上游 Python 执行结果缺失，跳过分析 step={}", step);
                 Map<String, String> deltaOutput = new HashMap<>();
-                deltaOutput.put("step_" + step + "_error",
+                // 阶段化 skipped key，不覆盖上游 _pygen_error / _pyexec_error
+                deltaOutput.put("step_" + step + "_pyanalyze_skipped",
                         "PYTHON_ANALYSIS 跳过：上游 Python 执行结果缺失");
                 return Map.of(DataAgentSpec.Graph.StateKey.Planning.EXECUTION_OUTPUT, deltaOutput);
             }
@@ -62,7 +63,8 @@ public class PythonAnalyzeNode implements NodeAction {
             if (!pythonOutput.isSuccess()) {
                 log.warn("[PythonAnalyzeNode] Python 执行未成功，跳过分析 step={}", step);
                 Map<String, String> deltaOutput = new HashMap<>();
-                deltaOutput.put("step_" + step + "_error",
+                // 阶段化 skipped key，不覆盖上游 _pyexec_error
+                deltaOutput.put("step_" + step + "_pyanalyze_skipped",
                         "PYTHON_ANALYSIS 跳过：Python 执行未成功");
                 return Map.of(DataAgentSpec.Graph.StateKey.Planning.EXECUTION_OUTPUT, deltaOutput);
             }
@@ -99,7 +101,7 @@ public class PythonAnalyzeNode implements NodeAction {
         } catch (Exception ex) {
             log.error("[PythonAnalyzeNode] 分析失败 step={}, err={}", step, ex.getMessage(), ex);
             Map<String, String> deltaOutput = new HashMap<>();
-            deltaOutput.put("step_" + step + "_error",
+            deltaOutput.put("step_" + step + "_pyanalyze_error",
                     "PYTHON_ANALYSIS 失败: " + ex.getClass().getSimpleName() + " - " + ex.getMessage());
             return Map.of(DataAgentSpec.Graph.StateKey.Planning.EXECUTION_OUTPUT, deltaOutput);
         }
