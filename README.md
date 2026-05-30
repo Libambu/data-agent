@@ -1,16 +1,18 @@
 # Data Agent
 
-[![Java](https://img.shields.io/badge/Java-17+-007396?logo=openjdk&logoColor=white)](https://openjdk.org/)
-[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.0-6DB33F?logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
-[![Spring AI Alibaba](https://img.shields.io/badge/Spring%20AI%20Alibaba%20Graph-1.1.2-FF6A00)](https://github.com/alibaba/spring-ai-alibaba)
-[![Vue](https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vuedotjs&logoColor=white)](https://vuejs.org/)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16%20+%20pgvector-336791?logo=postgresql&logoColor=white)](https://github.com/pgvector/pgvector)
-[![A2A](https://img.shields.io/badge/A2A-JSON--RPC-2C7BE5)](https://github.com/a2asdk)
-[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](./DOCKER.md)
-[![License](https://img.shields.io/badge/License-Research%20Only-blue)](#license)
-
 > **Multi-Agent Analytics, End-to-End Automated.**
 > 一个基于多节点 AI Agent 协作的端到端数据分析平台：自然语言进，可执行 SQL / Python 出，自动生成 Markdown 分析报告。
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Java-17-orange?logo=openjdk" />
+  <img src="https://img.shields.io/badge/Spring%20Boot-4.0-6DB33F?logo=spring" />
+  <img src="https://img.shields.io/badge/Spring%20AI-2.0.0--M5-6DB33F?logo=spring" />
+  <img src="https://img.shields.io/badge/Spring%20AI%20Alibaba%20Graph-1.1.2-FF6A00" />
+  <img src="https://img.shields.io/badge/Vue-3.5-42B883?logo=vuedotjs" />
+  <img src="https://img.shields.io/badge/Element%20Plus-2.13-409EFF" />
+  <img src="https://img.shields.io/badge/PostgreSQL%20%2B%20pgvector-pg16-336791?logo=postgresql" />
+  <img src="https://img.shields.io/badge/A2A%20Protocol-0.3.x-8A2BE2" />
+</p>
 
 ---
 
